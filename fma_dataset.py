@@ -6,87 +6,106 @@ import utils
 import json
 import numpy as np
 from os.path import join as pjoin
+from typing import Optional, Tuple, Dict, List
+from functools import lru_cache
 
-metadata_index = ['genre', 'interest', 'year_created']
-interest_bins = [0, 2000, 5000, 10000, float('inf')]
-interest_bins_labels = ['0-2000', '2000-5000', '5000-10000', '10000+']
-year_bins = [2007, 2013, 2018]
-year_bins_labels = ['2008-2012', '2013-2017']
+# Define constants at module level
+METADATA_INDEX = ['genre', 'interest', 'year_created']
+INTEREST_BINS = [0, 2000, 5000, 10000, float('inf')]
+INTEREST_BINS_LABELS = ['0-2000', '2000-5000', '5000-10000', '10000+']
+YEAR_BINS = [2007, 2013, 2018]
+YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
 
 class FmaDataset(Dataset):
-    def __init__(self, metadata_folder, root_dir, transform=None):
-        self.tracks = utils.load('fma_metadata/tracks.csv')
+    def __init__(self, metadata_folder: str, root_dir: str, transform: Optional[callable] = None):
+        # Load data only once during initialization
+        self.tracks = utils.load(pjoin(metadata_folder, 'tracks.csv'))
         
-        self.genre_track_dict = json.load(open(pjoin(metadata_folder, 'genre_track_dict.json')))
-        self.interest_bin_dict = json.load(open(pjoin(metadata_folder, 'interest_bin_dict.json')))
-        self.year_created_bin_dict = json.load(open(pjoin(metadata_folder, 'year_created_bin_dict.json')))
+        # Load metadata dictionaries using a helper method
+        self.metadata_dicts = self._load_metadata_dicts(metadata_folder)
         
-        self.small = self.tracks[self.tracks['set', 'subset'] <= 'small']
-        self.small = self.preprocess_tracks_csv(self.small)
-
+        # Preprocess tracks once during initialization
+        self.small = self._preprocess_tracks()
+        
+        # Store instance variables
         self.root_dir = root_dir
         self.transform = transform
         
+        # Pre-calculate valid indices for each category
+        self._initialize_category_indices()
 
-    def __len__(self):
+    def _load_metadata_dicts(self, metadata_folder: str) -> Dict:
+        """Load all metadata dictionaries at once."""
+        return {
+            'genre': json.load(open(pjoin(metadata_folder, 'genre_track_dict.json'))),
+            'interest': json.load(open(pjoin(metadata_folder, 'interest_bin_dict.json'))),
+            'year_created': json.load(open(pjoin(metadata_folder, 'year_created_bin_dict.json')))
+        }
+
+    def _preprocess_tracks(self) -> pd.DataFrame:
+        """Preprocess the tracks DataFrame."""
+        small = self.tracks[self.tracks['set', 'subset'] <= 'small'].copy()
+        small = small['track']
+        small['year_created'] = small['date_created'].dt.year
+        small = small.rename(columns={'genre_top': 'genre'})
+        return small.reset_index(drop=False)
+
+    def _initialize_category_indices(self):
+        """Pre-calculate valid indices for each category to avoid repeated computations."""
+        self.category_indices = {
+            'genre': {genre: np.array(tracks) for genre, tracks in self.metadata_dicts['genre'].items()},
+            'interest': {bin: np.array(tracks) for bin, tracks in self.metadata_dicts['interest'].items()},
+            'year_created': {bin: np.array(tracks) for bin, tracks in self.metadata_dicts['year_created'].items()}
+        }
+
+    def __len__(self) -> int:
         return len(self.small)
 
-    def __getitem__(self, idx):
+    @lru_cache()
+    def _load_track(self, track_id: str) -> np.ndarray:
+        """Load and cache track data."""
+        return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
+
+    def _get_bin_for_value(self, value: float, category: str) -> str:
+        """Get the appropriate bin for a value in a category."""
+        if category == 'interest':
+            return pd.cut([value], bins=INTEREST_BINS, labels=INTEREST_BINS_LABELS)[0]
+        elif category == 'year_created':
+            return pd.cut([value], bins=YEAR_BINS, labels=YEAR_BINS_LABELS)[0]
+        return value  # For genre, return as is
+
+    def _get_samples(self, anchor_track: pd.Series, category: str) -> Tuple[str, str]:
+        """Get positive and negative samples for a given category."""
+        value = anchor_track[category]
+        current_bin = self._get_bin_for_value(value, category)
+        
+        # Get positive sample
+        positive_tracks = self.category_indices[category][current_bin]
+        positive_track = np.random.choice(positive_tracks)
+        
+        # Get negative sample
+        other_bins = [bin for bin in self.category_indices[category].keys() if bin != current_bin]
+        other_bin = np.random.choice(other_bins)
+        negative_track = np.random.choice(self.category_indices[category][other_bin])
+        
+        return str(positive_track), str(negative_track)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         track = self.small.iloc[idx]
+        track_id = str(track['track_id'])
         
-        positive_id, negative_id = self.pick_positive_negative_sample(track)
-        positive_id = str(positive_id).zfill(6)
-        negative_id = str(negative_id).zfill(6)
+        # Select random category and get samples
+        category = np.random.choice(METADATA_INDEX)
+        positive_id, negative_id = self._get_samples(track, category)
         
-        anchor = np.load(pjoin(self.root_dir, f'{track['track_id']}.npy'))
-        positive = np.load(pjoin(self.root_dir, f'{positive_id}.npy'))
-        negative = np.load(pjoin(self.root_dir, f'{negative_id}.npy'))
-
+        # Load and transform samples
+        samples = [
+            self._load_track(track_id),
+            self._load_track(positive_id),
+            self._load_track(negative_id)
+        ]
+        
         if self.transform:
-            anchor = self.transform(anchor)
-            positive = self.transform(positive)
-            negative = self.transform(negative)
-        
-        return (anchor, positive, negative)
-    
-
-    def pick_positive_negative_sample(self, anchor_track):
-        selected_metadata = metadata_index[np.random.randint(0, 3)]
-        if selected_metadata == 'genre':
-            genre = anchor_track['track', 'genre_top']
-            genre_tracks = self.genre_track_dict[genre]
-            positive_track = genre_tracks[np.random.randint(0, len(genre_tracks))]
+            samples = [self.transform(sample) for sample in samples]
             
-            other_genres = [g for g in self.genre_track_dict.keys() if g != genre]
-            other_genre = other_genres[np.random.randint(0, len(other_genres))]
-            other_genre_tracks = self.genre_track_dict[other_genre]
-            negative_track = other_genre_tracks[np.random.randint(0, len(other_genre_tracks))]
-
-        elif selected_metadata == 'interest':
-            interest = anchor_track['track', 'interest']
-            interest_bin = pd.cut([interest], bins=interest_bins, labels=interest_bins_labels)[0]
-            interest_tracks = self.interest_bin_dict[interest_bin]
-            positive_track = interest_tracks[np.random.randint(0, len(interest_tracks))]
-
-            other_interest_bins = [bin for bin in self.interest_bin_dict.keys() if bin != interest_bin]
-            other_interest_bin = other_interest_bins[np.random.randint(0, len(other_interest_bins))]
-            other_interest_tracks = self.interest_bin_dict[other_interest_bin]
-            negative_track = other_interest_tracks[np.random.randint(0, len(other_interest_tracks))]
-
-        elif selected_metadata == 'year_created':
-            year_created = anchor_track['track', 'year_created']
-            year_created_bin = pd.cut([year_created], bins=year_bins, labels=year_bins_labels)[0]
-            year_created_tracks = self.year_created_bin_dict[year_created_bin]
-            positive_track = year_created_tracks[np.random.randint(0, len(year_created_tracks))]
-
-            other_year_created_bins = [bin for bin in self.year_created_bin_dict.keys() if bin != year_created_bin]
-            other_year_created_bin = other_year_created_bins[np.random.randint(0, len(other_year_created_bins))]
-            other_year_created_tracks = self.year_created_bin_dict[other_year_created_bin]
-            negative_track = other_year_created_tracks[np.random.randint(0, len(other_year_created_tracks))]
-            
-        return positive_track, negative_track
-    
-    def preprocess_tracks_csv(self, df):
-        df['track', 'year_created'] = df['track', 'date_created'].dt.year
-        df = df.reset_index(drop=False)
-        return df
+        return tuple(samples)
