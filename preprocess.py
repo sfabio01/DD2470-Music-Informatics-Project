@@ -69,13 +69,12 @@ def process_files_in_parallel(file_list: List[str], output_dir: str, num_workers
 
 if __name__ == "__main__":
     import argparse
-    import glob
     import time
 
     parser = argparse.ArgumentParser(description="Process audio files to compute spectrogram, chromagram, and tempogram.")
-    parser.add_argument("input_dir", help="Directory containing input audio files")
+    parser.add_argument("input_dir", help="Directory containing input audio files, should contain subdirectories with audio files")
     parser.add_argument("output_dir", help="Directory to save the processed data")
-    parser.add_argument("--patterns", nargs='+', default=["*.wav"], help="Patterns to match audio files, e.g., '*.wav' '*.mp3'")
+    parser.add_argument("--file_format", type=str, default="mp3", help="File format of audio files, e.g., 'mp3' 'wav'")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of parallel workers")
     args = parser.parse_args()
 
@@ -83,9 +82,11 @@ if __name__ == "__main__":
     print("Starting audio processing...")
 
     file_list = []
-    for pattern in args.patterns:
-        matched_files = glob.glob(os.path.join(args.input_dir, pattern))
-        file_list.extend(matched_files)
+    for root, dirs, files in os.walk(args.input_dir):
+        for file in files:
+            if file.endswith(f".{args.file_format}"):
+                file_list.append(os.path.join(root, file))
+                
     print(f"Found {len(file_list)} files to process.")
 
     process_files_in_parallel(file_list, args.output_dir, num_workers=args.num_workers)
