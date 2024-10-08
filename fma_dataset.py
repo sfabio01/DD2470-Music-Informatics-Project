@@ -19,7 +19,7 @@ YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
 class FmaDataset(Dataset):
     def __init__(self, metadata_folder: str, root_dir: str, transform: Optional[callable] = None):
         # Load data only once during initialization
-        self.tracks = utils.load('fma_metadata/tracks.csv')
+        self.tracks = utils.load(pjoin(metadata_folder, 'tracks.csv'))
         
         # Load metadata dictionaries using a helper method
         self.metadata_dicts = self._load_metadata_dicts(metadata_folder)
