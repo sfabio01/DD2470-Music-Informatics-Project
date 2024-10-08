@@ -5,6 +5,7 @@ import os
 import utils
 import json
 import numpy as np
+from os.path import join as pjoin
 
 metadata_index = ['genre', 'interest', 'year_created']
 interest_bins = [0, 2000, 5000, 10000, float('inf')]
@@ -13,11 +14,13 @@ year_bins = [2007, 2013, 2018]
 year_bins_labels = ['2008-2012', '2013-2017']
 
 class FmaDataset(Dataset):
-    def __init__(self, csv_file, root_dir, transform=None):
+    def __init__(self, metadata_folder, root_dir, transform=None):
         self.tracks = utils.load('fma_metadata/tracks.csv')
-        self.genre_track_dict = json.load(open('fma_metadata/genre_track_dict.json'))
-        self.interest_bin_dict = json.load(open('fma_metadata/interest_bin_dict.json'))
-        self.year_created_bin_dict = json.load(open('fma_metadata/year_created_bin_dict.json'))
+        
+        self.genre_track_dict = json.load(open(pjoin(metadata_folder, 'genre_track_dict.json')))
+        self.interest_bin_dict = json.load(open(pjoin(metadata_folder, 'interest_bin_dict.json')))
+        self.year_created_bin_dict = json.load(open(pjoin(metadata_folder, 'year_created_bin_dict.json')))
+        
         self.small = self.tracks[self.tracks['set', 'subset'] <= 'small']
         self.small = self.preprocess_tracks_csv(self.small)
 
@@ -32,13 +35,12 @@ class FmaDataset(Dataset):
         track = self.small.iloc[idx]
         
         positive_id, negative_id = self.pick_positive_negative_sample(track)
-        
-        anchor = np.load(os.path.join(self.root_dir, f'{track['track_id']}.npy'))
         positive_id = str(positive_id).zfill(6)
         negative_id = str(negative_id).zfill(6)
         
-        positive = np.load(os.path.join(self.root_dir, f'{positive_id}.npy'))
-        negative = np.load(os.path.join(self.root_dir, f'{negative_id}.npy'))
+        anchor = np.load(pjoin(self.root_dir, f'{track['track_id']}.npy'))
+        positive = np.load(pjoin(self.root_dir, f'{positive_id}.npy'))
+        negative = np.load(pjoin(self.root_dir, f'{negative_id}.npy'))
 
         if self.transform:
             anchor = self.transform(anchor)
