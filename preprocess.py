@@ -1,11 +1,9 @@
-from functools import partial
 from multiprocessing import Pool
 import librosa
 from matplotlib import pyplot as plt
 import numpy as np
 import os
 from scipy.ndimage import zoom
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 CORRUPTED_FILES = []
@@ -68,48 +66,51 @@ def process_audio_file(file_path:str)->np.ndarray:
         print(f"Error processing {file_path}: {e}")
 
 def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers: int = 4) -> None:
-    """Process multiple audio files in parallel using multi-threading with a progress bar."""
+    """Process multiple audio files in parallel using multi-processing with a progress bar."""
     os.makedirs(output_dir, exist_ok=True)
-    
     path = os.path.join(output_dir, "memmap.dat")
-    memmap = np.memmap(path, dtype=np.float16, mode='w+', shape=(len(file_list), 1024, 2048, 3))
+    memmap_shape = (len(file_list), 1024, 2048, 3)
+    memmap = np.memmap(path, dtype=np.float16, mode='w+', shape=memmap_shape)
 
-    def process_and_store(args):
-        i, file_path = args
+    def init_shared_memmap(shared_memmap):
+        global memmap
+        memmap = shared_memmap
+
+    def process_and_store(i_file):
+        i, file_path = i_file
         data = process_audio_file(file_path)
-        memmap[i] = data.astype(np.float16)
+        if data is not None:
+            memmap[i] = data.astype(np.float16)
 
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        futures = [executor.submit(process_and_store, (i, file_path)) for i, file_path in enumerate(file_list)]
-        
-        with tqdm(total=len(file_list), desc="Processing audio files") as pbar:
-            for future in as_completed(futures):
-                future.result()  # This will raise any exceptions that occurred during processing
-                pbar.update(1)
+    with Pool(processes=num_workers, initializer=init_shared_memmap, initargs=(memmap,)) as pool:
+        for _ in tqdm(pool.imap_unordered(process_and_store, enumerate(file_list)), total=len(file_list), desc="Processing audio files"):
+            pass
 
     memmap.flush()
     del memmap
+
     
-def sanity_check(file_list:list[str], num_workers:int = 4) -> list[str]:
-    """ Filter the file_list to only include valid files and output a new file_list """
+def sanity_check(file_list:list[str], num_workers:int = 4)->tuple[list[str], list[str]]:
+    """Filter the file_list to only include valid files and output a new file_list."""
     valid_files = []
     invalid_files = []
+
+    def librosa_load_wrapper(file_path):
+        try:
+            y, sr = librosa.load(file_path)
+            return file_path, y is not None and len(y) > 0
+        except Exception as e:
+            print(f"Error loading {file_path}: {e}")
+            return file_path, False
+
     with Pool(processes=num_workers) as pool:
-        results = []
-        for file_path in file_list:
-            results.append(pool.apply_async(librosa.load, (file_path,)))
-        
-        for file_path, result in tqdm(zip(file_list, results), total=len(file_list)):
-            try:
-                y, sr = result.get()
-                if y is not None and len(y) > 0:
-                    valid_files.append(file_path)
-            except Exception as e:
+        for file_path, is_valid in tqdm(pool.imap_unordered(librosa_load_wrapper, file_list), total=len(file_list)):
+            if is_valid:
+                valid_files.append(file_path)
+            else:
                 invalid_files.append(file_path)
-                print(f"Error loading {file_path}: {e}")
-    
+
     print(f"Found {len(valid_files)} valid files out of {len(file_list)} total files.")
-    
     return valid_files, invalid_files
     
 if __name__ == "__main__":
