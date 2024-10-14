@@ -5,6 +5,7 @@ import numpy as np
 import os
 from scipy.ndimage import zoom
 from tqdm import tqdm
+import gc
 
 CORRUPTED_FILES = []
 
@@ -68,31 +69,34 @@ def process_audio_file(file_path:str)->np.ndarray:
         CORRUPTED_FILES.append(file_path)
         print(f"Error processing {file_path}: {e}")
 
-def process_and_store(i_file):
-    i, file_path = i_file
+def process_and_store(args):
+    i, file_path, memmap_path, memmap_shape = args
     data = process_audio_file(file_path)
     if data is not None:
+        memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
         memmap[i] = data.astype(np.float16)
+        memmap.flush()
+        del memmap
         del data
+        gc.collect()
 
 def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers: int = 4) -> None:
     """Process multiple audio files in parallel using multi-processing with a progress bar."""
     os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, "memmap.dat")
+    memmap_path = os.path.join(output_dir, "memmap.dat")
     memmap_shape = (len(file_list), 1024, 2048, 3)
-    memmap = np.memmap(path, dtype=np.float16, mode='w+', shape=memmap_shape)
+    
+    # Create the memmap file
+    memmap = np.memmap(memmap_path, dtype=np.float16, mode='w+', shape=memmap_shape)
+    del memmap
+    
+    with Pool(processes=num_workers) as pool:
+        args_list = [(i, file_path, memmap_path, memmap_shape) for i, file_path in enumerate(file_list)]
+        for _ in tqdm(pool.imap_unordered(process_and_store, args_list), total=len(file_list), desc="Processing audio files"):
+            pass
 
-    def init_shared_memmap(shared_memmap):
-        global memmap
-        memmap = shared_memmap
-
-    with Pool(processes=num_workers, initializer=init_shared_memmap, initargs=(memmap,)) as pool:
-        steps = 0
-        for _ in tqdm(pool.imap_unordered(process_and_store, enumerate(file_list)), total=len(file_list), desc="Processing audio files"):
-            steps += 1
-            if steps % 1000 == 0:
-                memmap.flush()  # otherwise we are storing it in memory
-
+    # Final flush
+    memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
     memmap.flush()
     del memmap
 
