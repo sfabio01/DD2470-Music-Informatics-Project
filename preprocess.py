@@ -92,6 +92,8 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
 def librosa_load_wrapper(file_path):
     try:
         y, sr = librosa.load(file_path)
+        if len(y) / sr < 29.5:  # drop songs that are shorter than all the others
+            return file_path, False
         return file_path, y is not None and len(y) > 0
     except Exception as e:
         print(f"Error loading {file_path}: {e}")
