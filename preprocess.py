@@ -3,15 +3,16 @@ import numpy as np
 import os
 from multiprocessing import Pool
 from functools import partial
-from typing import Tuple, List
 from scipy.ndimage import zoom
 
-def load_audio_mono(file_path: str) -> Tuple[np.ndarray, int]:
+CORRUPTED_FILES = []
+
+def load_audio_mono(file_path:str)->tuple[np.ndarray,int]:
     """Load an audio file and ensure it's mono using librosa."""
     y, sr = librosa.load(file_path, sr=None, mono=True)
     return y, sr
 
-def process_audio_file(file_path: str, output_dir: str) -> None:
+def process_audio_file(file_path:str, output_dir:str)->None:
     """Process an audio file to compute spectrogram, chromagram, and tempogram."""
     try:
         # Load audio
@@ -58,9 +59,10 @@ def process_audio_file(file_path: str, output_dir: str) -> None:
         print(f"Processed and saved: {save_path}")
 
     except Exception as e:
+        CORRUPTED_FILES.append(file_path)
         print(f"Error processing {file_path}: {e}")
 
-def process_files_in_parallel(file_list: List[str], output_dir: str, num_workers: int = 4) -> None:
+def process_files_in_parallel(file_list:list[str], output_dir:str, num_workers:int = 4) -> None:
     """Process multiple audio files in parallel."""
     os.makedirs(output_dir, exist_ok=True)
     with Pool(num_workers) as pool:
@@ -94,3 +96,8 @@ if __name__ == "__main__":
     end_time = time.time()
     print("Audio processing completed.")
     print(f"Total time taken: {end_time - start_time} seconds")
+    
+    import json
+    
+    with open('corrupted_files.json', 'w') as f:
+        json.dump(CORRUPTED_FILES, f)

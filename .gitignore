@@ -2,4 +2,7 @@
 venv
 
 data/
+fma_metadata/
+fma_processed/
+
 __pycache__/
