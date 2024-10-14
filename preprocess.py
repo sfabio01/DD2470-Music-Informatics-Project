@@ -65,6 +65,12 @@ def process_audio_file(file_path:str)->np.ndarray:
         CORRUPTED_FILES.append(file_path)
         print(f"Error processing {file_path}: {e}")
 
+def process_and_store(i_file):
+    i, file_path = i_file
+    data = process_audio_file(file_path)
+    if data is not None:
+        memmap[i] = data.astype(np.float16)
+
 def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers: int = 4) -> None:
     """Process multiple audio files in parallel using multi-processing with a progress bar."""
     os.makedirs(output_dir, exist_ok=True)
@@ -75,12 +81,6 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
     def init_shared_memmap(shared_memmap):
         global memmap
         memmap = shared_memmap
-
-    def process_and_store(i_file):
-        i, file_path = i_file
-        data = process_audio_file(file_path)
-        if data is not None:
-            memmap[i] = data.astype(np.float16)
 
     with Pool(processes=num_workers, initializer=init_shared_memmap, initargs=(memmap,)) as pool:
         for _ in tqdm(pool.imap_unordered(process_and_store, enumerate(file_list)), total=len(file_list), desc="Processing audio files"):
