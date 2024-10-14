@@ -72,12 +72,12 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
     os.makedirs(output_dir, exist_ok=True)
     
     path = os.path.join(output_dir, "memmap.dat")
-    memmap = np.memmap(path, dtype=np.float32, mode='w+', shape=(len(file_list), 1024, 2048, 3))
+    memmap = np.memmap(path, dtype=np.float16, mode='w+', shape=(len(file_list), 1024, 2048, 3))
 
     def process_and_store(args):
         i, file_path = args
         data = process_audio_file(file_path)
-        memmap[i] = data
+        memmap[i] = data.astype(np.float16)
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = [executor.submit(process_and_store, (i, file_path)) for i, file_path in enumerate(file_list)]
@@ -90,7 +90,7 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
     memmap.flush()
     del memmap
     
-def sanity_check(file_list:list[str], output_dir:str, num_workers:int = 4) -> list[str]:
+def sanity_check(file_list:list[str], num_workers:int = 4) -> list[str]:
     """ Filter the file_list to only include valid files and output a new file_list """
     valid_files = []
     invalid_files = []
@@ -134,7 +134,7 @@ if __name__ == "__main__":
                 
     print(f"Found {len(file_list)} files to process.")
 
-    valid_files, invalid_files = sanity_check(file_list, args.output_dir, num_workers=args.num_workers)
+    valid_files, invalid_files = sanity_check(file_list, num_workers=args.num_workers)
     process_files_in_parallel(valid_files, args.output_dir, num_workers=args.num_workers)
 
     end_time = time.time()
