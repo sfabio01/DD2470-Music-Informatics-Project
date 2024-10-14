@@ -91,7 +91,7 @@ if __name__ == '__main__':
         model.train()
         running_loss = 0.0
         for i, (anchor, positive, negative) in enumerate(dataloader):
-            anchor, positive, negative = torch.randn(1, 3, 1024, 2048), torch.randn(1, 4, 3, 1024, 2048), torch.randn(1, 4, 3, 1024, 2048)
+            anchor, positive, negative = anchor.float(), positive.float(), negative.float()
         
             shape = positive.shape
 
