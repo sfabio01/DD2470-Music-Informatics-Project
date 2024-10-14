@@ -89,19 +89,18 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
     memmap.flush()
     del memmap
 
+def librosa_load_wrapper(file_path):
+    try:
+        y, sr = librosa.load(file_path)
+        return file_path, y is not None and len(y) > 0
+    except Exception as e:
+        print(f"Error loading {file_path}: {e}")
+        return file_path, False
     
 def sanity_check(file_list:list[str], num_workers:int = 4)->tuple[list[str], list[str]]:
     """Filter the file_list to only include valid files and output a new file_list."""
     valid_files = []
     invalid_files = []
-
-    def librosa_load_wrapper(file_path):
-        try:
-            y, sr = librosa.load(file_path)
-            return file_path, y is not None and len(y) > 0
-        except Exception as e:
-            print(f"Error loading {file_path}: {e}")
-            return file_path, False
 
     with Pool(processes=num_workers) as pool:
         for file_path, is_valid in tqdm(pool.imap_unordered(librosa_load_wrapper, file_list), total=len(file_list)):
