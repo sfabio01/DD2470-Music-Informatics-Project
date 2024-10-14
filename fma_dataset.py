@@ -65,6 +65,10 @@ class FmaDataset(Dataset):
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load and cache track data."""
         return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
+    
+    def _load_tracks(self, track_ids: str) -> np.ndarray:
+        """Load multiple tracks and concatenate them."""
+        return np.concatenate([self._load_track(track_id) for track_id in track_ids])
 
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
@@ -81,14 +85,20 @@ class FmaDataset(Dataset):
         
         # Get positive sample
         positive_tracks = self.category_indices[category][current_bin]
-        positive_track = np.random.choice(positive_tracks)
+
+        assert len(positive_tracks) >= 20, f'Not enough positive samples for {category} {current_bin}'
+
+        selected_positive_tracks = np.random.choice(positive_tracks, size=20)
         
         # Get negative sample
         other_bins = [bin for bin in self.category_indices[category].keys() if bin != current_bin]
         other_bin = np.random.choice(other_bins)
-        negative_track = np.random.choice(self.category_indices[category][other_bin])
+
+        assert len(self.category_indices[category][other_bin]) >= 20, f'Not enough negative samples for {category} {other_bin}'
+
+        selected_negative_tracks = np.random.choice(self.category_indices[category][other_bin], size=20)
         
-        return str(positive_track), str(negative_track)
+        return map(str, selected_positive_tracks), map(str, selected_negative_tracks)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         track = self.small.iloc[idx]
@@ -96,16 +106,20 @@ class FmaDataset(Dataset):
         
         # Select random category and get samples
         category = np.random.choice(METADATA_INDEX)
-        positive_id, negative_id = self._get_samples(track, category)
+        positive_ids, negative_ids = self._get_samples(track, category)
         
         # Load and transform samples
         samples = [
             self._load_track(track_id),
-            self._load_track(positive_id),
-            self._load_track(negative_id)
+            self._load_tracks(positive_ids),
+            self._load_tracks(negative_ids)
         ]
         
         if self.transform:
-            samples = [self.transform(sample) for sample in samples]
+            samples[0] = self.transform(samples[0])
+            for i in range(len(samples[1])):
+                samples[1][i] = self.transform(samples[1][i])
+                samples[2][i] = self.transform(samples[2][i])
+    
             
         return tuple(samples)
