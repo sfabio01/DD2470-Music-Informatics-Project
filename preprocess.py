@@ -56,6 +56,9 @@ def process_audio_file(file_path:str)->np.ndarray:
         # Cut to 2048 x 1024
         data = data[:1024, :2048, :]
         
+        # Pad with zeros to ensure it's 1024 x 2048
+        data = np.pad(data, ((0, 1024 - data.shape[0]), (0, 2048 - data.shape[1]), (0, 0)))
+        
         # rotate 180 degrees
         data = np.rot90(data, 2)  
 
