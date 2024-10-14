@@ -70,6 +70,7 @@ def process_and_store(i_file):
     data = process_audio_file(file_path)
     if data is not None:
         memmap[i] = data.astype(np.float16)
+        del data
 
 def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers: int = 4) -> None:
     """Process multiple audio files in parallel using multi-processing with a progress bar."""
@@ -83,8 +84,11 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
         memmap = shared_memmap
 
     with Pool(processes=num_workers, initializer=init_shared_memmap, initargs=(memmap,)) as pool:
+        steps = 0
         for _ in tqdm(pool.imap_unordered(process_and_store, enumerate(file_list)), total=len(file_list), desc="Processing audio files"):
-            pass
+            steps += 1
+            if steps % 1000 == 0:
+                memmap.flush()  # otherwise we are storing it in memory
 
     memmap.flush()
     del memmap
