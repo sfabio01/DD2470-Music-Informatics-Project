@@ -24,6 +24,9 @@ class CNNFeatureExtractor(nn.Module):
 class Song2Vec(nn.Module):
     def __init__(self):
         super().__init__()
+
+        self.batch_norm = nn.BatchNorm2d(3)  # just learn the mean and std instead of computing them from data
+
         self.cnn = CNNFeatureExtractor()
         self.cls_embed = nn.Parameter(torch.empty(1024), requires_grad=True)
         self.w_pe = nn.Embedding(512, 1024)
@@ -36,6 +39,9 @@ class Song2Vec(nn.Module):
 
     def forward(self, x):
         DEVICE = x.device
+
+        x = self.batch_norm(x)
+
         x = self.cnn(x)  # Pass through the CNN
         
         B, L, D = x.shape

@@ -22,10 +22,8 @@ def main(args):
     
     print(f"Training on device: {DEVICE}")
     
-    transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # TODO: compute our own
-
-    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", transform = transform)
-    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", transform = transform)
+    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train")
+    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val")
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
@@ -66,6 +64,7 @@ def main(args):
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
+        anchor, positive, negative = anchor.permute(0, 3, 1, 2), positive.permute(0, 3, 1, 2), negative.permute(0, 3, 1, 2)
         
         with torch.autocast(device_type=DEVICE, dtype=DTYPE):
             anchor_embed = model(anchor)
