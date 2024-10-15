@@ -4,7 +4,7 @@ from itertools import cycle
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-
+from torchvision import transforms
 import wandb
 from tqdm import tqdm
 
@@ -21,9 +21,14 @@ def main(args):
     torch.backends.cudnn.allow_tf32 = True
     
     print(f"Training on device: {DEVICE}")
+    
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # TODO: compute our own
+    ])
 
-    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train")
-    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val") #TODO : Normalise and Standaridise
+    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", transform = transform)
+    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", transform = transform)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, prefetch_factor=args.prefetch_factor, num_workers=args.num_workers, persistent_workers=True)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size, prefetch_factor=args.prefetch_factor, num_workers=args.num_workers, persistent_workers=True)
 
