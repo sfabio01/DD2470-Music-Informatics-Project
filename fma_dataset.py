@@ -15,8 +15,11 @@ INTEREST_BINS = [0, 2000, 5000, 10000, float('inf')]
 INTEREST_BINS_LABELS = ['0-2000', '2000-5000', '5000-10000', '10000+']
 YEAR_BINS = [2007, 2013, 2018]
 YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
+import numpy as np
 
 class FmaDataset(Dataset):
+    _memmap = None  # Class variable to store the singleton memmap
+
     def __init__(self, metadata_folder: str, root_dir: str, split: str, transform: Optional[callable] = None):
         assert split in ['train', 'val'], "Split must be one of 'train' or 'val'"
 
@@ -41,7 +44,11 @@ class FmaDataset(Dataset):
         # Pre-calculate valid indices for each category
         self._initialize_category_indices()
 
-        self.memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
+        # Load memmap as a singleton
+        if FmaDataset._memmap is None:
+            FmaDataset._memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
+        self.memmap = FmaDataset._memmap
+
         self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
 
     def _sanity_check(self) -> bool:
@@ -52,9 +59,10 @@ class FmaDataset(Dataset):
 
         return len_genre == len_interest == len_year_created
     
-    def _load_memmap(self, memmap_path: str) -> np.memmap:
+    @staticmethod
+    def _load_memmap(memmap_path: str) -> np.memmap:
         """Load the memmap file."""
-        return np.memmap(memmap_path, dtype=np.float16, mode='r', shape=(len(self), 1024, 2048, 3))
+        return np.memmap(memmap_path, dtype=np.float16, mode='r', shape=(7997, 1024, 2048, 3))
     
     def _load_json_mapping(self, json_path: str) -> Dict:
         """Load a JSON file and return a dictionary."""
@@ -97,7 +105,6 @@ class FmaDataset(Dataset):
         index = self.filename_to_index[f'{track_id.zfill(6)}']
         return self.memmap[index]
         
-
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
         if category == 'interest':
