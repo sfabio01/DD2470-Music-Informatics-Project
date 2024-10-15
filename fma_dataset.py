@@ -50,7 +50,7 @@ class FmaDataset(Dataset):
     
     def _load_memmap(self, memmap_path: str) -> np.memmap:
         """Load the memmap file."""
-        return np.memmap(memmap_path, dtype=np.float16, mode='r', shape=(7994, 1024, 2048, 3))
+        return np.memmap(memmap_path, dtype=np.float16, mode='r', shape=(len(self), 1024, 2048, 3))
     
     def _load_json_mapping(self, json_path: str) -> Dict:
         """Load a JSON file and return a dictionary."""
