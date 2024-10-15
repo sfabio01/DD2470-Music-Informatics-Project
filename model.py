@@ -35,13 +35,14 @@ class Song2Vec(nn.Module):
         nn.init.normal_(self.cls_embed, std=0.02)
 
     def forward(self, x):
+        DEVICE = x.device
         x = self.cnn(x)  # Pass through the CNN
         
         B, L, D = x.shape
         
         x = x.permute(0, 2, 1)
         
-        pe = torch.arange(0, 512)
+        pe = torch.arange(0, 512, device=DEVICE)
         x = torch.cat([x[:, :-1], self.cls_embed.repeat(B, 1, 1)], dim=1)
         x = x + self.w_pe(pe)
         x = self.transformer(x)[:, -1, :]  # Pass through the Transformer and extract cls
