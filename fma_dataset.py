@@ -138,9 +138,9 @@ class FmaDataset(Dataset):
         
         # Load and transform samples
         samples = [
-            torch.from_numpy(self._load_track(track_id)),
-            torch.from_numpy(self._load_track(positive_id)),
-            torch.from_numpy(self._load_track(negative_id))
+            torch.tensor(self._load_track(track_id)),
+            torch.tensor(self._load_track(positive_id)),
+            torch.tensor(self._load_track(negative_id))
         ]
         
         if self.transform:
