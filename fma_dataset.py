@@ -1,13 +1,13 @@
+import json
+from os.path import join as pjoin
+from typing import Optional, Tuple, Dict
+
 import torch
 from torch.utils.data import Dataset
-import pandas as pd
-import os
-import utils
-import json
 import numpy as np
-from os.path import join as pjoin
-from typing import Optional, Tuple, Dict, List
-from functools import lru_cache
+import pandas as pd
+
+import utils
 
 # Define constants at module level
 METADATA_INDEX = ['genre', 'interest', 'year_created']
