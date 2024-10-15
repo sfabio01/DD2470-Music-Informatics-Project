@@ -60,7 +60,7 @@ def main(args):
         
     triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
 
-    model = torch.compile(model, backend="aot_eager")
+    # model = torch.compile(model, backend="aot_eager")
     model.train()
 
     train_loss, val_loss = float("inf"), float("inf")
@@ -68,6 +68,7 @@ def main(args):
     for step in step_tqdm:
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
+        print(anchor)
         anchor, positive, negative = anchor.float(), positive.float(), negative.float() # shape (batch_size, 3, 1024, 2048)
         
         with torch.autocast(device_type=DEVICE, dtype=DTYPE):
