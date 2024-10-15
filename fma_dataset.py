@@ -24,6 +24,8 @@ class FmaDataset(Dataset):
         
         # Load metadata dictionaries using a helper method
         self.metadata_dicts = self._load_metadata_dicts(pjoin(metadata_folder, split))
+
+        assert self._sanity_check()
         
         # Preprocess tracks once during initialization
         self.small = self._preprocess_tracks()
@@ -37,6 +39,14 @@ class FmaDataset(Dataset):
 
         self.memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
         self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
+
+    def _sanity_check(self) -> bool:
+        """Check if all metadata dictionaries contains the same number of tracks."""
+        len_genre = sum(len(tracks) for tracks in self.metadata_dicts['genre'].values())
+        len_interest = sum(len(tracks) for tracks in self.metadata_dicts['interest'].values())
+        len_year_created = sum(len(tracks) for tracks in self.metadata_dicts['year_created'].values())
+
+        return len_genre == len_interest == len_year_created
     
     def _load_memmap(self, memmap_path: str) -> np.memmap:
         """Load the memmap file."""
