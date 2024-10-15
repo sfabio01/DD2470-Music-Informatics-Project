@@ -15,7 +15,7 @@ INTEREST_BINS = [0, 2000, 5000, 10000, float('inf')]
 INTEREST_BINS_LABELS = ['0-2000', '2000-5000', '5000-10000', '10000+']
 YEAR_BINS = [2007, 2013, 2018]
 YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
-import numpy as np
+
 
 class FmaDataset(Dataset):
     _memmap = None  # Class variable to store the singleton memmap
@@ -45,8 +45,7 @@ class FmaDataset(Dataset):
         self._initialize_category_indices()
 
         # Load memmap as a singleton
-        if FmaDataset._memmap is None:
-            FmaDataset._memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
+        if FmaDataset._memmap is None: FmaDataset._memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
         self.memmap = FmaDataset._memmap
 
         self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
@@ -139,9 +138,9 @@ class FmaDataset(Dataset):
         
         # Load and transform samples
         samples = [
-            self._load_track(track_id),
-            self._load_track(positive_id),
-            self._load_track(negative_id)
+            torch.from_numpy(self._load_track(track_id)),
+            torch.from_numpy(self._load_track(positive_id)),
+            torch.from_numpy(self._load_track(negative_id))
         ]
         
         if self.transform:

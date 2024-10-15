@@ -33,7 +33,7 @@ def main(args):
     val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
     TOTAL_STEPS = len(train_dl) * args.epochs
-    VAL_INTERVAL = len(train_dl) // 10
+    VAL_INTERVAL = len(train_dl) // 2
     VAL_STEPS = len(val_dl) // VAL_INTERVAL
     
     train_dl = cycle(train_dl)  # infinite iterator
