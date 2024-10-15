@@ -22,20 +22,20 @@ def main(args):
     
     print(f"Training on device: {DEVICE}")
     
-    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train")
-    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val")
+    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
+    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
     TOTAL_STEPS = len(train_dl) * args.epochs
-    VAL_INTERVAL = len(train_dl) // 2
-    VAL_STEPS = len(val_dl) // VAL_INTERVAL
+    VAL_INTERVAL = len(train_dl) // args.val_interval
+    VAL_STEPS = len(val_dl) // args.val_interval
     
     train_dl = cycle(train_dl)  # infinite iterator
     val_dl = cycle(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.lr, fused=DEVICE=="cuda")  # fused speeds up training
+    optim = torch.optim.AdamW(model.parameters(), lr=args.lr, fused=False)  # fused speeds up training
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
@@ -55,7 +55,7 @@ def main(args):
         
     triplet_loss_fn = nn.TripletMarginLoss(margin=0.1, p=2)
 
-    # model = torch.compile(model, backend="aot_eager")
+    model = torch.compile(model, backend="aot_eager")
     model.train()
 
     train_loss, val_loss = float("inf"), float("inf")
@@ -66,7 +66,7 @@ def main(args):
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
         anchor, positive, negative = anchor.permute(0, 3, 1, 2), positive.permute(0, 3, 1, 2), negative.permute(0, 3, 1, 2)
         
-        with torch.autocast(device_type=DEVICE, dtype=DTYPE):
+        with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
             positive_embed = model(positive)
             negative_embed = model(negative)
@@ -83,7 +83,7 @@ def main(args):
         wandb.log({"train_loss": train_loss}, step=step)
         step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
         
-        if step % VAL_STEPS == 0 and step != 0:
+        if step % VAL_INTERVAL == 0 and step != 0:
             step_tqdm.set_description(f"Validating...")
             model.eval()
             total_val_loss = 0
@@ -91,8 +91,9 @@ def main(args):
             for _ in range(VAL_STEPS):
                 anchor, positive, negative = next(val_dl)
                 anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
+                anchor, positive, negative = anchor.permute(0, 3, 1, 2), positive.permute(0, 3, 1, 2), negative.permute(0, 3, 1, 2)
                 
-                with torch.autocast(device_type=DEVICE, dtype=DTYPE):
+                with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
                     anchor_embed = model(anchor)
                     positive_embed = model(positive)
                     negative_embed = model(negative)
@@ -117,5 +118,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--val_interval", type=int, default=8, help="How many times per training epoch to process a correspondingly large validation portion")
+    parser.add_argument("--skip_sanity_check", action="store_true")
     args = parser.parse_args()
     main(args)

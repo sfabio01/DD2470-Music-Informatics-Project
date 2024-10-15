@@ -18,9 +18,7 @@ YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
 
 
 class FmaDataset(Dataset):
-    _memmap = None  # Class variable to store the singleton memmap
-
-    def __init__(self, metadata_folder: str, root_dir: str, split: str, transform: Optional[callable] = None):
+    def __init__(self, metadata_folder: str, root_dir: str, split: str, transform: Optional[callable] = None, skip_sanity_check: bool = False):
         assert split in ['train', 'val'], "Split must be one of 'train' or 'val'"
 
         self.split = split
@@ -32,7 +30,7 @@ class FmaDataset(Dataset):
         self.metadata_dicts = self._load_metadata_dicts(pjoin(metadata_folder, split))
         self.train_val_splits = self._load_train_val_splits(metadata_folder)
 
-        assert self._sanity_check()
+        if not skip_sanity_check: assert self._sanity_check()
         
         # Preprocess tracks once during initialization
         self.small = self._preprocess_tracks()
@@ -45,8 +43,7 @@ class FmaDataset(Dataset):
         self._initialize_category_indices()
 
         # Load memmap as a singleton
-        if FmaDataset._memmap is None: FmaDataset._memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
-        self.memmap = FmaDataset._memmap
+        self.memmap_path = pjoin(root_dir, 'memmap.dat')
 
         self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
 
@@ -58,10 +55,9 @@ class FmaDataset(Dataset):
 
         return len_genre == len_interest == len_year_created
     
-    @staticmethod
-    def _load_memmap(memmap_path: str) -> np.memmap:
+    def _load_memmap(self) -> np.memmap:
         """Load the memmap file."""
-        return np.memmap(memmap_path, dtype=np.float16, mode='r', shape=(7997, 1024, 2048, 3))
+        return np.memmap(self.memmap_path, dtype=np.float16, mode='r', shape=(7997, 1024, 2048, 3))
     
     def _load_json_mapping(self, json_path: str) -> Dict:
         """Load a JSON file and return a dictionary."""
@@ -101,8 +97,11 @@ class FmaDataset(Dataset):
 
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load track data from memmap file."""
+        memmap = self._load_memmap()
         index = self.filename_to_index[f'{track_id.zfill(6)}']
-        return self.memmap[index]
+        x = memmap[index]
+        del memmap
+        return x
         
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
