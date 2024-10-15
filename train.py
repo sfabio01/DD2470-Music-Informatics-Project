@@ -29,8 +29,8 @@ def main(args):
 
     train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", transform = transform)
     val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", transform = transform)
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, prefetch_factor=args.prefetch_factor, num_workers=args.num_workers, persistent_workers=True)
-    val_dl = DataLoader(val_ds, batch_size=args.batch_size, prefetch_factor=args.prefetch_factor, num_workers=args.num_workers, persistent_workers=True)
+    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
+    val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
     TOTAL_STEPS = len(train_dl) * args.epochs
     VAL_INTERVAL = len(train_dl) // 10
@@ -116,15 +116,10 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train RNNs/Transformers for Python code generation")
+    parser = argparse.ArgumentParser(description="Train model for song embeddings")
     parser.add_argument("--run_name", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--seq_len", type=int, default=2048)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--log_interval", type=int, default=100, help="Number of batches between logging training status to Wandb")
-    parser.add_argument("--continue_from", type=str, default=None, help="Path to checkpoint file to resume training from")
-    parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--prefetch_factor", type=int, default=4)
     args = parser.parse_args()
     main(args)
