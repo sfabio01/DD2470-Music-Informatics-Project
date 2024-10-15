@@ -19,11 +19,15 @@ YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
 class FmaDataset(Dataset):
     def __init__(self, metadata_folder: str, root_dir: str, split: str, transform: Optional[callable] = None):
         assert split in ['train', 'val'], "Split must be one of 'train' or 'val'"
+
+        self.split = split
+        
         # Load data only once during initialization
         self.tracks = utils.load(pjoin(metadata_folder, 'tracks.csv'))
         
         # Load metadata dictionaries using a helper method
         self.metadata_dicts = self._load_metadata_dicts(pjoin(metadata_folder, split))
+        self.train_val_splits = self._load_train_val_splits(metadata_folder)
 
         assert self._sanity_check()
         
@@ -64,6 +68,10 @@ class FmaDataset(Dataset):
             'year_created': json.load(open(pjoin(metadata_folder, 'year_created_bin_dict.json')))
         }
 
+    def _load_train_val_splits(self, metadata_folder: str) -> Dict:
+        """Load the train-val splits."""
+        return json.load(open(pjoin(metadata_folder, 'train_val_ids.json')))
+
     def _preprocess_tracks(self) -> pd.DataFrame:
         """Preprocess the tracks DataFrame."""
         small = self.tracks[self.tracks['set', 'subset'] <= 'small'].copy()
@@ -82,7 +90,7 @@ class FmaDataset(Dataset):
         }
 
     def __len__(self) -> int:
-        return len(self.small)
+        return len(self.train_val_splits[self.split])
 
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load track data from memmap file."""
