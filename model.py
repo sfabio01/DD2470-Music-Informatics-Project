@@ -6,8 +6,9 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from fma_dataset import FmaDataset
 # CNN Feature Extractor
+
 class CNNFeatureExtractor(nn.Module):
-    def __init__(self, input_channels, output_channels):
+    def __init__(self):
         super(CNNFeatureExtractor, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=(3,4), stride=(1,2), padding=(1,1))
         self.conv2 = nn.Conv2d(16, 32, kernel_size=(3,4), stride=(1,2), padding=(1,1))
@@ -19,35 +20,32 @@ class CNNFeatureExtractor(nn.Module):
         x = self.convlast(x)
         return x.squeeze(1)
 
-# Transformer Encoder
-class TransformerEncoder(nn.Module):
-    def __init__(self, input_dim, embed_dim, num_heads, num_layers, ff_dim, dropout=0.1):
-        super(TransformerEncoder, self).__init__()
-        self.embedding = nn.Linear(input_dim, embed_dim)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim, nhead=num_heads, dim_feedforward=ff_dim, dropout=dropout
-        )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.fc = nn.Linear(embed_dim, embed_dim)
-
-    def forward(self, x):
-        x = self.embedding(x)
-        x = self.transformer_encoder(x)
-        x = x.mean(dim=1)  # Take the mean over the time dimension for representation
-        x = self.fc(x)
-        return F.normalize(x, p=2, dim=1)  # Normalize embeddings to unit length
-
 # Combined CNN + Transformer Model
 class Song2Vec(nn.Module):
-    def __init__(self, cnn_input_channels, cnn_output_channels, transformer_input_dim, embed_dim, num_heads, num_layers, ff_dim):
+    def __init__(self):
         super().__init__()
-        self.cnn = CNNFeatureExtractor(cnn_input_channels, cnn_output_channels)
-        self.transformer = TransformerEncoder(transformer_input_dim, embed_dim, num_heads, num_layers, ff_dim)
+        self.cnn = CNNFeatureExtractor()
+        self.cls_embed = nn.Parameter(torch.empty(1024), requires_grad=True)
+        self.w_pe = nn.Embedding(512, 1024)
+        self.transformer = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=1024, nhead=8, dim_feedforward=2048),
+            num_layers=6
+        )
+        
+        nn.init.normal_(self.cls_embed, std=0.02)
 
     def forward(self, x):
         x = self.cnn(x)  # Pass through the CNN
-        x = self.transformer(x)  # Pass through the Transformer
-        return x
+        
+        B, L, D = x.shape
+        
+        x = x.permute(0, 2, 1)
+        
+        pe = torch.arange(0, 512)
+        x = torch.cat([x[:, :-1], self.cls_embed.repeat(B, 1, 1)], dim=1)
+        x = x + self.w_pe(pe)
+        x = self.transformer(x)[:, -1, :]  # Pass through the Transformer and extract cls
+        return F.normalize(x, p=2, dim=1)  # Normalize embeddings to unit length
 
 if __name__ == '__main__':
     # Example model initialization
