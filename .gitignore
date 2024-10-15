@@ -6,3 +6,5 @@ fma_metadata/
 !fma_metadata/*.json
 
 __pycache__/
+
+**/.ipynb_checkpoints/
