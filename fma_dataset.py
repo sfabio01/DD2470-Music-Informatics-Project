@@ -21,7 +21,7 @@ class FmaDataset(Dataset):
         assert split in ['train', 'val'], "Split must be one of 'train' or 'val'"
 
         self.split = split
-        
+
         # Load data only once during initialization
         self.tracks = utils.load(pjoin(metadata_folder, 'tracks.csv'))
         
@@ -75,7 +75,7 @@ class FmaDataset(Dataset):
     def _preprocess_tracks(self) -> pd.DataFrame:
         """Preprocess the tracks DataFrame."""
         small = self.tracks[self.tracks['set', 'subset'] <= 'small'].copy()
-        small = small['track']
+        small = small['track'].reset_index(drop=False)
         small['year_created'] = small['date_created'].dt.year
         small = small.rename(columns={'genre_top': 'genre'})
         small = small[~small['track_id'].isin([133297, 99134, 108925])] # remove corrupted tracks
