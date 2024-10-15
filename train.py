@@ -22,10 +22,7 @@ def main(args):
     
     print(f"Training on device: {DEVICE}")
     
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # TODO: compute our own
-    ])
+    transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # TODO: compute our own
 
     train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", transform = transform)
     val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", transform = transform)
