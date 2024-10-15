@@ -1,9 +1,11 @@
+from multiprocessing import Pool
 import librosa
+from matplotlib import pyplot as plt
 import numpy as np
 import os
-from multiprocessing import Pool
-from functools import partial
 from scipy.ndimage import zoom
+from tqdm import tqdm
+import gc
 
 CORRUPTED_FILES = []
 
@@ -12,7 +14,7 @@ def load_audio_mono(file_path:str)->tuple[np.ndarray,int]:
     y, sr = librosa.load(file_path, sr=None, mono=True)
     return y, sr
 
-def process_audio_file(file_path:str, output_dir:str)->None:
+def process_audio_file(file_path:str)->np.ndarray:
     """Process an audio file to compute spectrogram, chromagram, and tempogram."""
     try:
         # Load audio
@@ -21,7 +23,7 @@ def process_audio_file(file_path:str, output_dir:str)->None:
         # Compute STFT and take magnitude
         S_complex = librosa.stft(y)
         S_magnitude = np.abs(S_complex)
-
+        
         # Compute Spectrogram (Log-amplitude)
         log_S = librosa.amplitude_to_db(S_magnitude)
 
@@ -51,24 +53,78 @@ def process_audio_file(file_path:str, output_dir:str)->None:
 
         # Stack features into a NumPy array (shape: [n_freq_bins, min_frames, 3])
         data = np.stack([log_S, chroma_resized, tempogram_resized], axis=-1)
+        
+        # Cut to 2048 x 1024
+        data = data[:1024, :2048, :]
+        
+        # Pad with zeros to ensure it's 1024 x 2048
+        data = np.pad(data, ((0, 1024 - data.shape[0]), (0, 2048 - data.shape[1]), (0, 0)))
+        
+        # rotate 180 degrees
+        data = np.rot90(data, 2)  
 
-        # Save processed data
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
-        save_path = os.path.join(output_dir, f"{base_name}.npy")
-        np.save(save_path, data)
-        print(f"Processed and saved: {save_path}")
-
+        return data
+        
     except Exception as e:
         CORRUPTED_FILES.append(file_path)
         print(f"Error processing {file_path}: {e}")
 
-def process_files_in_parallel(file_list:list[str], output_dir:str, num_workers:int = 4) -> None:
-    """Process multiple audio files in parallel."""
-    os.makedirs(output_dir, exist_ok=True)
-    with Pool(num_workers) as pool:
-        func = partial(process_audio_file, output_dir=output_dir)
-        pool.map(func, file_list)
+def process_and_store(args):
+    i, file_path, memmap_path, memmap_shape = args
+    data = process_audio_file(file_path)
+    if data is not None:
+        memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
+        memmap[i] = data.astype(np.float16)
+        memmap.flush()
+        del memmap
+        del data
+        gc.collect()
 
+def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers: int = 4) -> None:
+    """Process multiple audio files in parallel using multi-processing with a progress bar."""
+    os.makedirs(output_dir, exist_ok=True)
+    memmap_path = os.path.join(output_dir, "memmap.dat")
+    memmap_shape = (len(file_list), 1024, 2048, 3)
+    
+    # Create the memmap file
+    memmap = np.memmap(memmap_path, dtype=np.float16, mode='w+', shape=memmap_shape)
+    del memmap
+    
+    with Pool(processes=num_workers) as pool:
+        args_list = [(i, file_path, memmap_path, memmap_shape) for i, file_path in enumerate(file_list)]
+        for _ in tqdm(pool.imap_unordered(process_and_store, args_list), total=len(file_list), desc="Processing audio files"):
+            pass
+
+    # Final flush
+    memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
+    memmap.flush()
+    del memmap
+
+def librosa_load_wrapper(file_path):
+    try:
+        y, sr = librosa.load(file_path)
+        if len(y) / sr < 29.5:  # drop songs that are shorter than all the others
+            return file_path, False
+        return file_path, y is not None and len(y) > 0
+    except Exception as e:
+        print(f"Error loading {file_path}: {e}")
+        return file_path, False
+    
+def sanity_check(file_list:list[str], num_workers:int = 4)->tuple[list[str], list[str]]:
+    """Filter the file_list to only include valid files and output a new file_list."""
+    valid_files = []
+    invalid_files = []
+
+    with Pool(processes=num_workers) as pool:
+        for file_path, is_valid in tqdm(pool.imap_unordered(librosa_load_wrapper, file_list), total=len(file_list)):
+            if is_valid:
+                valid_files.append(file_path)
+            else:
+                invalid_files.append(file_path)
+
+    print(f"Found {len(valid_files)} valid files out of {len(file_list)} total files.")
+    return valid_files, invalid_files
+    
 if __name__ == "__main__":
     import argparse
     import time
@@ -91,13 +147,19 @@ if __name__ == "__main__":
                 
     print(f"Found {len(file_list)} files to process.")
 
-    process_files_in_parallel(file_list, args.output_dir, num_workers=args.num_workers)
+    valid_files, invalid_files = sanity_check(file_list, num_workers=args.num_workers)
+    process_files_in_parallel(valid_files, args.output_dir, num_workers=args.num_workers)
 
     end_time = time.time()
     print("Audio processing completed.")
     print(f"Total time taken: {end_time - start_time} seconds")
     
-    import json
+    print()
+    print(invalid_files)
+    print(CORRUPTED_FILES)
     
-    with open('corrupted_files.json', 'w') as f:
-        json.dump(CORRUPTED_FILES, f)
+    import json
+    # dump valid files to dict from name to index, json
+    valid_files_dict = {file_path: i for i, file_path in enumerate(valid_files)}
+    with open(os.path.join(args.output_dir, 'name_to_index.json'), 'w') as f:
+        json.dump(valid_files_dict, f)
