@@ -35,7 +35,7 @@ def main(args):
     val_dl = cycle(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    optim = torch.optim.AdamW(model.parame  ters(), lr=args.lr)
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
