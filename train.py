@@ -68,8 +68,7 @@ def main(args):
     for step in step_tqdm:
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
-        print(anchor)
-        anchor, positive, negative = anchor.float(), positive.float(), negative.float() # shape (batch_size, 3, 1024, 2048)
+        anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
         
         with torch.autocast(device_type=DEVICE, dtype=DTYPE):
             anchor_embed = model(anchor)
@@ -95,7 +94,7 @@ def main(args):
             
             for _ in range(VAL_STEPS):
                 anchor, positive, negative = next(val_dl)
-                anchor, positive, negative = anchor.float(), positive.float(), negative.float() # shape (batch_size, 3, 1024, 2048)
+                anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
                 
                 with torch.autocast(device_type=DEVICE, dtype=DTYPE):
                     anchor_embed = model(anchor)
@@ -113,7 +112,7 @@ def main(args):
 
     torch.save({
         'model_state_dict': model.state_dict()
-    }, f"epoch_{epoch + 1}.pt")
+    }, f"epoch_{args.epochs}.pt")
 
 
 if __name__ == "__main__":
