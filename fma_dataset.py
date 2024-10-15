@@ -34,6 +34,17 @@ class FmaDataset(Dataset):
         # Pre-calculate valid indices for each category
         self._initialize_category_indices()
 
+        self.memmap = self._load_memmap(pjoin(root_dir, 'memmap.dat'))
+        self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
+    
+    def _load_memmap(self, memmap_path: str) -> np.memmap:
+        """Load the memmap file."""
+        return np.memmap(memmap_path, dtype=np.float16, mode='r')
+    
+    def _load_json_mapping(self, json_path: str) -> Dict:
+        """Load a JSON file and return a dictionary."""
+        return json.load(open(json_path))
+
     def _load_metadata_dicts(self, metadata_folder: str) -> Dict:
         """Load all metadata dictionaries at once."""
         return {
@@ -61,10 +72,11 @@ class FmaDataset(Dataset):
     def __len__(self) -> int:
         return len(self.small)
 
-    @lru_cache()
     def _load_track(self, track_id: str) -> np.ndarray:
-        """Load and cache track data."""
-        return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
+        """Load track data from memmap file."""
+        index = self.filename_to_index[f'{track_id.zfill(6)}']
+        return self.memmap[index]
+        
 
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
