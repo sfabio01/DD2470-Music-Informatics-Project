@@ -43,7 +43,8 @@ class FmaDataset(Dataset):
         self._initialize_category_indices()
 
         # Load memmap as a singleton
-        self.memmap_path = pjoin(root_dir, 'memmap.dat')
+        self.chunk_size = 1024 * 2048 * 3
+        self.memmap = torch.from_file("fma_processed/memmap.dat", dtype=torch.float16, size=7997*1024*2048*3, shared=True) 
 
         self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
 
@@ -54,10 +55,6 @@ class FmaDataset(Dataset):
         len_year_created = sum(len(tracks) for tracks in self.metadata_dicts['year_created'].values())
 
         return len_genre == len_interest == len_year_created
-    
-    def _load_memmap(self) -> np.memmap:
-        """Load the memmap file."""
-        return np.memmap(self.memmap_path, dtype=np.float16, mode='r', shape=(7997, 1024, 2048, 3))
     
     def _load_json_mapping(self, json_path: str) -> Dict:
         """Load a JSON file and return a dictionary."""
@@ -97,11 +94,8 @@ class FmaDataset(Dataset):
 
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load track data from memmap file."""
-        memmap = self._load_memmap()
         index = self.filename_to_index[f'{track_id.zfill(6)}']
-        x = memmap[index]
-        del memmap
-        return x
+        return self.memmap[index*self.chunk_size:(index+1)*self.chunk_size].reshape(1024, 2048, 3)
         
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
@@ -137,9 +131,9 @@ class FmaDataset(Dataset):
         
         # Load and transform samples
         samples = [
-            torch.tensor(self._load_track(track_id)),
-            torch.tensor(self._load_track(positive_id)),
-            torch.tensor(self._load_track(negative_id))
+            self._load_track(track_id),
+            self._load_track(positive_id),
+            self._load_track(negative_id)
         ]
         
         if self.transform:

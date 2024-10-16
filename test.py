@@ -1,20 +1,12 @@
-# read the memmap file in chunks and save each channel as an image (spectrogram / chromagram, tempogram)
-
+from tqdm import tqdm
+import torch
 import numpy as np
-from matplotlib import pyplot as plt
 
 CHUNK_SIZE = 1024 * 2048 * 3
 
+
 mm = np.memmap("fma_processed/memmap.dat", dtype="float16", mode="r")
-
-img = mm[:CHUNK_SIZE].reshape(1024, 2048, 3)
-
-# plot the img and save it to a file
-plt.imshow(img[:, :, 0])
-plt.savefig("spectrogram.png")
-
-plt.imshow(img[:, :, 1])
-plt.savefig("chromagram.png")
-
-plt.imshow(img[:, :, 2])
-plt.savefig("tempogram.png")
+tm = torch.from_file("fma_processed/memmap.dat", dtype=torch.float16, size=7997*1024*2048*3) 
+for i in tqdm(range(0, 1000)):
+    chunk = mm[i*CHUNK_SIZE:(i+1)*CHUNK_SIZE]
+    m = chunk.mean()
