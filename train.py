@@ -16,6 +16,7 @@ torch.random.manual_seed(1337)
 # from model import Song2Vec
 from baseline_model import Song2Vec
 from fma_dataset import FmaDataset
+from hard_fma_dataset import HardFmaDataset
 
 class TripletLossWithCosineDistance(nn.Module):
     def __init__(self, margin=0.1):
@@ -38,8 +39,8 @@ def main(args):
     
     print(f"Training on device: {DEVICE}")
     
-    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
-    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
+    train_ds = HardFmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
+    val_ds = HardFmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
