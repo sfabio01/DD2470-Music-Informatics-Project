@@ -70,9 +70,9 @@ def main(args):
         },
     )
         
-    # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
     # triplet loss with cosine distance
-    triplet_loss_fn = TripletLossWithCosineDistance(margin=0.5)
+    # triplet_loss_fn = TripletLossWithCosineDistance(margin=0.5)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
@@ -82,6 +82,7 @@ def main(args):
     for step in step_tqdm:
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
+        print(anchor.shape, positive.shape)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
                 
         shape = positive.shape
@@ -102,11 +103,25 @@ def main(args):
         positive_embed = positive_embed.view(shape[0], shape[1], -1)
         negative_embed = negative_embed.view(shape[0], shape[1], -1)
 
-        dist_pos = F.cosine_similarity(anchor_embed.unsqueeze(1), positive_embed, dim=-1) # shape (batch_size, 20)
-        dist_neg = F.cosine_similarity(anchor_embed.unsqueeze(1), negative_embed, dim=-1)
+        # dist_pos = 1 - F.cosine_similarity(anchor_embed.unsqueeze(1), positive_embed, dim=-1) # shape (batch_size, 20)
+        # dist_neg = 1 - F.cosine_similarity(anchor_embed.unsqueeze(1), negative_embed, dim=-1)
 
-        p = torch.argmin(dist_pos, dim=1) # shape (batch_size,)
-        n = torch.argmax(dist_neg, dim=1)
+        dist_pos = torch.cdist(anchor_embed.unsqueeze(1), positive_embed, p=2).squeeze(1)  # shape (batch_size, 20)
+        dist_neg = torch.cdist(anchor_embed.unsqueeze(1), negative_embed, p=2).squeeze(1)
+
+        print(dist_pos.shape, dist_neg.shape)
+
+        p = torch.argmax(dist_pos, dim=1) # shape (batch_size,)
+        n = torch.argmin(dist_neg, dim=1)
+
+        p_max = torch.max(dist_pos, dim=1)[0]
+        n_min = torch.min(dist_neg, dim=1)[0]
+
+        print(p_max, n_min)
+
+        if (p_max < n_min).any():
+            print("FUUUUCK")
+            continue
 
         # reshape positive and negative back to (batch_size, 20, n_channels, height, width)
         positive = positive.view(shape[0], shape[1], *positive.shape[1:])
@@ -119,6 +134,8 @@ def main(args):
         
             # Compute Triplet Loss
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+            reg_loss = (anchor_embed.norm(2, dim=1).mean() + positive_embed.norm(2, dim=1).mean() + negative_embed.norm(2, dim=1).mean()) / 3
+            loss -= 0.1 * reg_loss
         
         # Backward pass
         optim.zero_grad()
