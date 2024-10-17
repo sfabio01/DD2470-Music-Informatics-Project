@@ -17,7 +17,7 @@ YEAR_BINS = [2007, 2013, 2018]
 YEAR_BINS_LABELS = ['2008-2012', '2013-2017']
 
 
-class HardFmaDataset(Dataset):
+class FmaDataset(Dataset):
     def __init__(self, metadata_folder: str, root_dir: str, split: str, transform: Optional[callable] = None, skip_sanity_check: bool = False):
         assert split in ['train', 'val'], "Split must be one of 'train' or 'val'"
 
