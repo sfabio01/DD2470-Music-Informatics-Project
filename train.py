@@ -27,7 +27,7 @@ class TripletLossWithCosineDistance(nn.Module):
         negative_cosine_distance = 1 - F.cosine_similarity(anchor, negative)
         print(positive_cosine_distance.mean(), negative_cosine_distance.mean())
         loss = F.relu(positive_cosine_distance - negative_cosine_distance + self.margin)
-        return loss
+        return loss.mean()
 
 def main(args):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -71,7 +71,7 @@ def main(args):
         
     # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
     # triplet loss with cosine distance
-    triplet_loss_fn = TripletLossWithCosineDistance()
+    triplet_loss_fn = TripletLossWithCosineDistance(margin=0.5)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()

@@ -45,7 +45,7 @@ class Song2Vec(nn.Module):
 
         _, h_n = self.gru(x)
                 
-        return h_n[-1]
+        return F.normalize(h_n[-1], p=2, dim=1)
 
 if __name__ == '__main__':
     model = Song2Vec()
