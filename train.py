@@ -17,17 +17,6 @@ torch.random.manual_seed(1337)
 from baseline_model import Song2Vec
 from fma_dataset import FmaDataset
 
-class TripletLossWithCosineDistance(nn.Module):
-    def __init__(self, margin=0.1):
-        super(TripletLossWithCosineDistance, self).__init__()
-        self.margin = margin
-
-    def forward(self, anchor, positive, negative):
-        positive_cosine_distance = 1 - F.cosine_similarity(anchor, positive)
-        negative_cosine_distance = 1 - F.cosine_similarity(anchor, negative)
-        print(positive_cosine_distance.mean(), negative_cosine_distance.mean())
-        loss = F.relu(positive_cosine_distance - negative_cosine_distance + self.margin)
-        return loss.mean()
 
 def main(args):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -68,10 +57,9 @@ def main(args):
             **vars(args)
         },
     )
-        
-    # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
-    # triplet loss with cosine distance
-    triplet_loss_fn = TripletLossWithCosineDistance(margin=0.5)
+    
+    reconstruction_loss_fn = nn.MSELoss()
+    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
@@ -84,12 +72,14 @@ def main(args):
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
         
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-            anchor_embed = model(anchor)
-            positive_embed = model(positive)
-            negative_embed = model(negative)
+            anchor, anchor_embed = model(anchor)
+            positive, positive_embed = model(positive)
+            negative, negative_embed = model(negative)
         
             # Compute Triplet Loss
-            loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+            triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+            reconstruction_loss = reconstruction_loss_fn(anchor, anchor_embed)
+            loss = triplet_loss + reconstruction_loss
         
         # Backward pass
         optim.zero_grad()
@@ -116,9 +106,9 @@ def main(args):
                 anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
                 
                 with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-                    anchor_embed = model(anchor)
-                    positive_embed = model(positive)
-                    negative_embed = model(negative)
+                    anchor, anchor_embed = model(anchor)
+                    positive, positive_embed = model(positive)
+                    negative, negative_embed = model(negative)
                 
                     # Save anchor embeddings
                     # embeddings.extend(anchor_embed.detach().cpu().tolist())
@@ -126,7 +116,9 @@ def main(args):
                     # embeddings.extend(negative_embed.detach().cpu().tolist())
                 
                     # Compute Triplet Loss
-                    loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+                    triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+                    reconstruction_loss = reconstruction_loss_fn(anchor, anchor_embed)
+                    loss = triplet_loss + reconstruction_loss
                     
                     positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
