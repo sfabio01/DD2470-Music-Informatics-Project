@@ -40,6 +40,8 @@ class FmaDataset(Dataset):
         # Pre-calculate valid indices for each category
         self._initialize_category_indices()
 
+        self.memmap = np.memmap(pjoin(root_dir, 'memmap.dat'), dtype=np.float16, mode='r', shape=(7997, 1024, 2048, 3))
+
     def _sanity_check(self) -> bool:
         """Check if all metadata dictionaries contains the same number of tracks."""
         len_genre = sum(len(tracks) for tracks in self.metadata_dicts['genre'].values())
@@ -72,9 +74,11 @@ class FmaDataset(Dataset):
         return len(self.small)
 
     def _load_track(self, track_id: str) -> np.ndarray:
-        """Load track data from npy file."""
-        return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
-        
+        """Load track data from memmap file."""
+        index = self.filename_to_index[f'{track_id.zfill(6)}']
+        x = self.memmap[index]
+        return x
+    
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
         if category == 'interest':
@@ -113,9 +117,9 @@ class FmaDataset(Dataset):
 
         # Load and transform samples
         samples = [
-            torch.from_numpy(self._load_track(track_id)),
-            torch.from_numpy(self._load_track(positive_id)),
-            torch.from_numpy(self._load_track(negative_id))
+            torch.tensor(self._load_track(track_id), dtype=torch.float16),
+            torch.tensor(self._load_track(positive_id), dtype=torch.float16),
+            torch.tensor(self._load_track(negative_id), dtype=torch.float16)
         ]
         
         if self.transform:

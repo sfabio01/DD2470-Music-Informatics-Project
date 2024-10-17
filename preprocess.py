@@ -1,11 +1,11 @@
-import os
 from multiprocessing import Pool
-
 import librosa
+from matplotlib import pyplot as plt
 import numpy as np
-from tqdm import tqdm
+import os
 from scipy.ndimage import zoom
-
+from tqdm import tqdm
+import gc
 
 CORRUPTED_FILES = []
 
@@ -70,21 +70,35 @@ def process_audio_file(file_path:str)->np.ndarray:
         print(f"Error processing {file_path}: {e}")
 
 def process_and_store(args):
-    file_path, output_dir = args
+    i, file_path, memmap_path, memmap_shape = args
     data = process_audio_file(file_path)
     if data is not None:
-        file_stem = os.path.splitext(os.path.basename(file_path))[0]
-        output_path = os.path.join(output_dir, f"{file_stem}.npy")
-        np.save(output_path, data.astype(np.float16))
+        memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
+        memmap[i] = data.astype(np.float16)
+        memmap.flush()
+        del memmap
+        del data
+        gc.collect()
 
 def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers: int = 4) -> None:
     """Process multiple audio files in parallel using multi-processing with a progress bar."""
     os.makedirs(output_dir, exist_ok=True)
+    memmap_path = os.path.join(output_dir, "memmap.dat")
+    memmap_shape = (len(file_list), 1024, 2048, 3)
+    
+    # Create the memmap file
+    memmap = np.memmap(memmap_path, dtype=np.float16, mode='w+', shape=memmap_shape)
+    del memmap
     
     with Pool(processes=num_workers) as pool:
-        args_list = [(file_path, output_dir) for file_path in file_list]
+        args_list = [(i, file_path, memmap_path, memmap_shape) for i, file_path in enumerate(file_list)]
         for _ in tqdm(pool.imap_unordered(process_and_store, args_list), total=len(file_list), desc="Processing audio files"):
             pass
+
+    # Final flush
+    memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
+    memmap.flush()
+    del memmap
 
 def librosa_load_wrapper(file_path):
     try:
