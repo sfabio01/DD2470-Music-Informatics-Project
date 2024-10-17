@@ -1,5 +1,4 @@
 import argparse
-from itertools import cycle
 
 import wandb
 import numpy as np
@@ -14,6 +13,11 @@ torch.random.manual_seed(1337)
 
 from model import Song2Vec
 from fma_dataset import FmaDataset
+
+def infinite_loader(data_loader):
+    while True:
+        for batch in data_loader:
+            yield batch
 
 
 def main(args):
@@ -34,8 +38,8 @@ def main(args):
     VAL_INTERVAL = len(train_dl) // 10  # i.e. how often per epoch to validate with a portion of the validation set
     VAL_STEPS = len(val_dl) // 10  # i.e. the size of that portion
     
-    train_dl = cycle(train_dl)  # infinite iterator
-    val_dl = cycle(val_dl)
+    train_dl = infinite_loader(train_dl)  # infinite iterator
+    val_dl = infinite_loader(val_dl)
     
     model = Song2Vec().to(DEVICE)
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, fused=False)  # fused speeds up training
