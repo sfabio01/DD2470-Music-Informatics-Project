@@ -31,8 +31,6 @@ class Song2Vec(nn.Module):
         self.gru = nn.GRU(input_size=1024, hidden_size=1024, num_layers=4, batch_first=True)
         
     def forward(self, x):
-        DEVICE = x.device
-
         x = x.permute(0, 3, 1, 2) # B, H, W, C -> B, C, H, W
 
         x = self.batch_norm(x)

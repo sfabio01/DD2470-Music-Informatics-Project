@@ -67,7 +67,6 @@ def main(args):
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
-        anchor, positive, negative = anchor.permute(0, 3, 1, 2), positive.permute(0, 3, 1, 2), negative.permute(0, 3, 1, 2)
         
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
@@ -100,7 +99,6 @@ def main(args):
             for _ in range(VAL_STEPS):
                 anchor, positive, negative = next(val_dl)
                 anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
-                anchor, positive, negative = anchor.permute(0, 3, 1, 2), positive.permute(0, 3, 1, 2), negative.permute(0, 3, 1, 2)
                 
                 with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
                     anchor_embed = model(anchor)
