@@ -42,11 +42,6 @@ class FmaDataset(Dataset):
         # Pre-calculate valid indices for each category
         self._initialize_category_indices()
 
-        # Load memmap as a singleton
-        self.memmap_path = pjoin(root_dir, 'memmap.dat')
-
-        self.filename_to_index = self._load_json_mapping(pjoin(root_dir, 'name_to_index.json'))
-
     def _sanity_check(self) -> bool:
         """Check if all metadata dictionaries contains the same number of tracks."""
         len_genre = sum(len(tracks) for tracks in self.metadata_dicts['genre'].values())
@@ -54,10 +49,6 @@ class FmaDataset(Dataset):
         len_year_created = sum(len(tracks) for tracks in self.metadata_dicts['year_created'].values())
 
         return len_genre == len_interest == len_year_created
-    
-    def _load_json_mapping(self, json_path: str) -> Dict:
-        """Load a JSON file and return a dictionary."""
-        return json.load(open(json_path))
 
     def _load_metadata_dicts(self, metadata_folder: str) -> Dict:
         """Load all metadata dictionaries at once."""
