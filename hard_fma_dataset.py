@@ -24,16 +24,13 @@ class HardFmaDataset(Dataset):
         self.split = split
 
         # Load data only once during initialization
-        self.tracks = utils.load(pjoin(metadata_folder, 'tracks.csv'))
+        self.small = pd.read_csv(pjoin(metadata_folder, split, 'small.csv'))
         
         # Load metadata dictionaries using a helper method
         self.metadata_dicts = self._load_metadata_dicts(pjoin(metadata_folder, split))
         self.train_val_splits = self._load_train_val_splits(metadata_folder)
 
         if not skip_sanity_check: assert self._sanity_check()
-        
-        # Preprocess tracks once during initialization
-        self.small = self._preprocess_tracks()
         
         # Store instance variables
         self.root_dir = root_dir
@@ -62,15 +59,6 @@ class HardFmaDataset(Dataset):
         """Load the train-val splits."""
         return json.load(open(pjoin(metadata_folder, 'train_val_ids.json')))
 
-    def _preprocess_tracks(self) -> pd.DataFrame:
-        """Preprocess the tracks DataFrame."""
-        small = self.tracks[self.tracks['set', 'subset'] <= 'small'].copy()
-        small = small['track'].reset_index(drop=False)
-        small['year_created'] = small['date_created'].dt.year
-        small = small.rename(columns={'genre_top': 'genre'})
-        small = small[~small['track_id'].isin([133297, 99134, 108925])] # remove corrupted tracks
-        return small.reset_index(drop=False)
-
     def _initialize_category_indices(self):
         """Pre-calculate valid indices for each category to avoid repeated computations."""
         self.category_indices = {
@@ -80,7 +68,7 @@ class HardFmaDataset(Dataset):
         }
 
     def __len__(self) -> int:
-        return len(self.train_val_splits[self.split])
+        return len(self.small)
 
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load track data from npy file."""

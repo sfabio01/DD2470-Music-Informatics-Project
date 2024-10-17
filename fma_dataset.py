@@ -22,18 +22,16 @@ class FmaDataset(Dataset):
         assert split in ['train', 'val'], "Split must be one of 'train' or 'val'"
 
         self.split = split
+        self.skip_sanity_check = skip_sanity_check
 
         # Load data only once during initialization
-        self.tracks = utils.load(pjoin(metadata_folder, 'tracks.csv'))
+        self.small = pd.read_csv(pjoin(metadata_folder, split, 'small.csv'))
         
         # Load metadata dictionaries using a helper method
         self.metadata_dicts = self._load_metadata_dicts(pjoin(metadata_folder, split))
         self.train_val_splits = self._load_train_val_splits(metadata_folder)
 
         if not skip_sanity_check: assert self._sanity_check()
-        
-        # Preprocess tracks once during initialization
-        self.small = self._preprocess_tracks()
         
         # Store instance variables
         self.root_dir = root_dir
@@ -62,15 +60,6 @@ class FmaDataset(Dataset):
         """Load the train-val splits."""
         return json.load(open(pjoin(metadata_folder, 'train_val_ids.json')))
 
-    def _preprocess_tracks(self) -> pd.DataFrame:
-        """Preprocess the tracks DataFrame."""
-        small = self.tracks[self.tracks['set', 'subset'] <= 'small'].copy()
-        small = small['track'].reset_index(drop=False)
-        small['year_created'] = small['date_created'].dt.year
-        small = small.rename(columns={'genre_top': 'genre'})
-        small = small[~small['track_id'].isin([133297, 99134, 108925])] # remove corrupted tracks
-        return small.reset_index(drop=False)
-
     def _initialize_category_indices(self):
         """Pre-calculate valid indices for each category to avoid repeated computations."""
         self.category_indices = {
@@ -80,7 +69,7 @@ class FmaDataset(Dataset):
         }
 
     def __len__(self) -> int:
-        return len(self.train_val_splits[self.split])
+        return len(self.small)
 
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load track data from npy file."""
@@ -115,9 +104,13 @@ class FmaDataset(Dataset):
         track_id = str(track['track_id'])
         
         # Select random category and get samples
-        category = np.random.choice(METADATA_INDEX)
+        category = 'genre' # np.random.choice(METADATA_INDEX)
         positive_id, negative_id = self._get_samples(track, category)
         
+        if not self.skip_sanity_check:
+            assert self.small.loc[self.small['track_id'] == int(track_id), 'genre'].values[0] == self.small.loc[self.small['track_id'] == int(positive_id), 'genre'].values[0]
+            assert self.small.loc[self.small['track_id'] == int(track_id), 'genre'].values[0] != self.small.loc[self.small['track_id'] == int(negative_id), 'genre'].values[0]
+
         # Load and transform samples
         samples = [
             torch.tensor(self._load_track(track_id)),
@@ -129,3 +122,13 @@ class FmaDataset(Dataset):
             samples = [self.transform(sample) for sample in samples]
             
         return tuple(samples)
+    
+
+if __name__ == '__main__':
+    metadata_folder = 'fma_metadata'
+    root_dir = 'fma_processed'
+    split = 'train'
+    dataset = FmaDataset(metadata_folder, root_dir, split)
+    for i in range(len(dataset)):
+        print(dataset[i])
+        
