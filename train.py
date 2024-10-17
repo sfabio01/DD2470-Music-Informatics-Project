@@ -3,8 +3,9 @@ from itertools import cycle
 
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
-from torchvision import transforms
+
 import wandb
 from tqdm import tqdm
 
@@ -87,6 +88,10 @@ def main(args):
             step_tqdm.set_description(f"Validating...")
             model.eval()
             total_val_loss = 0
+            total_positive_cosine_distance = 0
+            total_negative_cosine_distance = 0
+            total_positive_2norm_distance = 0
+            total_negative_2norm_distance = 0
             
             for _ in range(VAL_STEPS):
                 anchor, positive, negative = next(val_dl)
@@ -100,12 +105,29 @@ def main(args):
                 
                     # Compute Triplet Loss
                     loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-                
+                    
+                    positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
+                    negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
+                    
+                    positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed)
+                    negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed)
+                    
+                    total_positive_cosine_distance += positive_cosine_distance.mean().item()
+                    total_negative_cosine_distance += negative_cosine_distance.mean().item()
+                    total_positive_2norm_distance += positive_2norm_distance.mean().item()
+                    total_negative_2norm_distance += negative_2norm_distance.mean().item()
+                    
                 val_loss = loss.item()
                 step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
                 total_val_loss += val_loss
             
-            wandb.log({"val_loss": total_val_loss / VAL_STEPS}, step=step)
+            wandb.log({
+                "avg_val_loss": total_val_loss / VAL_STEPS,
+                "avg_positive_cosine_distance": total_positive_cosine_distance / VAL_STEPS,
+                "avg_negative_cosine_distance": total_negative_cosine_distance / VAL_STEPS,
+                "avg_positive_2norm_distance": total_positive_2norm_distance / VAL_STEPS,
+                "avg_negative_2norm_distance": total_negative_2norm_distance / VAL_STEPS,
+            }, step=step)
 
     torch.save({
         'model_state_dict': model.state_dict()
