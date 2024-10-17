@@ -17,6 +17,18 @@ torch.random.manual_seed(1337)
 from baseline_model import Song2Vec
 from fma_dataset import FmaDataset
 
+class TripletLossWithCosineDistance(nn.Module):
+    def __init__(self, margin=0.1):
+        super(TripletLossWithCosineDistance, self).__init__()
+        self.margin = margin
+
+    def forward(self, anchor, positive, negative):
+        positive_cosine_distance = 1 - F.cosine_similarity(anchor, positive)
+        negative_cosine_distance = 1 - F.cosine_similarity(anchor, negative)
+        print(positive_cosine_distance.mean(), negative_cosine_distance.mean())
+        loss = F.relu(positive_cosine_distance - negative_cosine_distance + self.margin)
+        return loss
+
 def main(args):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     DTYPE = torch.bfloat16 if DEVICE=="cuda" else torch.float16
@@ -59,7 +71,7 @@ def main(args):
         
     # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
     # triplet loss with cosine distance
-    triplet_loss_fn = nn.TripletMarginWithDistanceLoss(margin=0.1, distance_function=lambda x, y: 1 - F.cosine_similarity(x, y))
+    triplet_loss_fn = TripletLossWithCosineDistance()
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
