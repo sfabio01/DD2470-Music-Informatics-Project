@@ -28,8 +28,8 @@ def main(args):
     val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
     TOTAL_STEPS = len(train_dl) * args.epochs
-    VAL_INTERVAL = len(train_dl) // args.val_interval
-    VAL_STEPS = len(val_dl) // args.val_interval
+    VAL_INTERVAL = len(train_dl) // 10  # i.e. how often per epoch to validate with a portion of the validation set
+    VAL_STEPS = len(val_dl) // 10  # i.e. the size of that portion
     
     train_dl = cycle(train_dl)  # infinite iterator
     val_dl = cycle(val_dl)
@@ -53,7 +53,7 @@ def main(args):
         },
     )
         
-    triplet_loss_fn = nn.TripletMarginLoss(margin=0.1, p=2)
+    triplet_loss_fn = nn.TripletMarginLoss(margin=0.2, p=2)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
