@@ -55,10 +55,6 @@ class FmaDataset(Dataset):
 
         return len_genre == len_interest == len_year_created
     
-    def _load_memmap(self) -> np.memmap:
-        """Load the memmap file."""
-        return np.memmap(self.memmap_path, dtype=np.float16, mode='r', shape=(7997, 1024, 2048, 3))
-    
     def _load_json_mapping(self, json_path: str) -> Dict:
         """Load a JSON file and return a dictionary."""
         return json.load(open(json_path))
@@ -98,12 +94,6 @@ class FmaDataset(Dataset):
     def _load_track(self, track_id: str) -> np.ndarray:
         """Load track data from npy file."""
         return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
-        # """Load track data from memmap file."""
-        # memmap = self._load_memmap()
-        # index = self.filename_to_index[f'{track_id.zfill(6)}']
-        # x = memmap[index]
-        # del memmap
-        # return x
         
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""

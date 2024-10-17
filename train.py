@@ -1,5 +1,7 @@
 import argparse
 from itertools import cycle
+import numpy as np
+from sklearn.manifold import TSNE
 
 import torch
 import torch.nn as nn
@@ -93,6 +95,8 @@ def main(args):
             total_positive_2norm_distance = 0
             total_negative_2norm_distance = 0
             
+            embeddings = []
+            
             for _ in range(VAL_STEPS):
                 anchor, positive, negative = next(val_dl)
                 anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
@@ -102,6 +106,11 @@ def main(args):
                     anchor_embed = model(anchor)
                     positive_embed = model(positive)
                     negative_embed = model(negative)
+                
+                    # Save anchor embeddings
+                    embeddings.extend(anchor_embed.detach().cpu().tolist())
+                    embeddings.extend(positive_embed.detach().cpu().tolist())
+                    embeddings.extend(negative_embed.detach().cpu().tolist())
                 
                     # Compute Triplet Loss
                     loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
@@ -121,7 +130,19 @@ def main(args):
                 step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
                 total_val_loss += val_loss
             
+            # Perform t-SNE on anchor embeddings
+            all_embeddings = np.concatenate(embeddings)
+            tsne = TSNE(n_components=3, random_state=42)
+            embeddings_3d = tsne.fit_transform(all_embeddings)
+            
+            # Create a wandb.Table with the 3D embeddings
+            columns = ["x", "y", "z"]
+            data = [[x, y, z] for x, y, z in embeddings_3d]
+            table = wandb.Table(data=data, columns=columns)
+            
+            # Log the table to wandb
             wandb.log({
+                "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
                 "avg_val_loss": total_val_loss / VAL_STEPS,
                 "avg_positive_cosine_distance": total_positive_cosine_distance / VAL_STEPS,
                 "avg_negative_cosine_distance": total_negative_cosine_distance / VAL_STEPS,
