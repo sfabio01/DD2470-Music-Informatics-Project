@@ -86,9 +86,9 @@ class HardFmaDataset(Dataset):
         """Load track data from npy file."""
         return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
     
-    def _load_tracks(self, track_ids: str) -> np.ndarray:
+    def _load_tracks(self, track_ids) -> np.ndarray:
         """Load multiple tracks and concatenate them."""
-        return np.concatenate([self._load_track(track_id) for track_id in track_ids])
+        return np.stack([self._load_track(track_id) for track_id in track_ids])
         
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
