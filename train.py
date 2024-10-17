@@ -27,8 +27,8 @@ def main(args):
     
     train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
     val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
-    val_dl = DataLoader(val_ds, batch_size=args.batch_size)
+    train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    val_dl = DataLoader(val_ds, batch_size=args.batch_size, num_workers=0)
 
     TOTAL_STEPS = len(train_dl) * args.epochs
     VAL_INTERVAL = len(train_dl) // 10  # i.e. how often per epoch to validate with a portion of the validation set
