@@ -15,9 +15,9 @@ class CNNFeatureExtractor(nn.Module):
         self.convlast = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
         
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
         x = self.convlast(x)
         return x.squeeze(1)
 
