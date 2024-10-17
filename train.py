@@ -101,66 +101,67 @@ def main(args):
         step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
         
         if step % VAL_INTERVAL == 0 and step != 0:
-            step_tqdm.set_description(f"Validating...")
-            model.eval()
-            total_val_loss = 0
-            total_triplet_loss = 0
-            total_reconstruction_loss = 0
-            total_positive_cosine_similarity = 0
-            total_negative_cosine_similarity = 0
-            total_positive_2norm_distance = 0
-            total_negative_2norm_distance = 0
-            
-            # embeddings = []
-            
-            for _ in range(VAL_STEPS):
-                anchor, positive, negative = next(val_dl)
-                anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
+            with torch.no_grad():
+                step_tqdm.set_description(f"Validating...")
+                model.eval()
+                total_val_loss = 0
+                total_triplet_loss = 0
+                total_reconstruction_loss = 0
+                total_positive_cosine_similarity = 0
+                total_negative_cosine_similarity = 0
+                total_positive_2norm_distance = 0
+                total_negative_2norm_distance = 0
                 
-                with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-                    anchor_out, anchor_embed = model(anchor)
-                    _, positive_embed = model.encode(positive)
-                    _, negative_embed = model.encode(negative)
-
-                    triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-                    reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
+                # embeddings = []
+                
+                for _ in range(VAL_STEPS):
+                    anchor, positive, negative = next(val_dl)
+                    anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
                     
-                positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
-                negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
-                
-                positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
-                negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
+                    with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
+                        anchor_out, anchor_embed = model(anchor)
+                        _, positive_embed = model.encode(positive)
+                        _, negative_embed = model.encode(negative)
 
-                val_loss = loss.item()
-                total_val_loss += val_loss
-                total_triplet_loss += triplet_loss.item()
-                total_reconstruction_loss += reconstruction_loss.item()
-                total_positive_cosine_similarity += positive_cosine_similarity.mean().item()
-                total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
-                total_positive_2norm_distance += positive_2norm_distance.mean().item()
-                total_negative_2norm_distance += negative_2norm_distance.mean().item()
+                        triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+                        reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
+                        
+                    positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
+                    negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
+                    
+                    positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
+                    negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
+
+                    val_loss = loss.item()
+                    total_val_loss += val_loss
+                    total_triplet_loss += triplet_loss.item()
+                    total_reconstruction_loss += reconstruction_loss.item()
+                    total_positive_cosine_similarity += positive_cosine_similarity.mean().item()
+                    total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
+                    total_positive_2norm_distance += positive_2norm_distance.mean().item()
+                    total_negative_2norm_distance += negative_2norm_distance.mean().item()
+                    
+                    step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
                 
-                step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
-            
-            # Perform t-SNE on anchor embeddings
-            # all_embeddings = np.concatenate(embeddings)
-            # tsne = TSNE(n_components=3, random_state=42)
-            # embeddings_3d = tsne.fit_transform(all_embeddings)
-            
-            # # Create a wandb.Table with the 3D embeddings
-            # columns = ["x", "y", "z"]
-            # data = [[x, y, z] for x, y, z in embeddings_3d]
-            # table = wandb.Table(data=data, columns=columns)
-            
-            # Log the table to wandb
-            wandb.log({
-                # "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
-                "avg_val_loss": total_val_loss / VAL_STEPS,
-                "avg_positive_cosine_similarity": total_positive_cosine_similarity / VAL_STEPS,
-                "avg_negative_cosine_similarity": total_negative_cosine_similarity / VAL_STEPS,
-                "avg_positive_2norm_distance": total_positive_2norm_distance / VAL_STEPS,
-                "avg_negative_2norm_distance": total_negative_2norm_distance / VAL_STEPS,
-            }, step=step)
+                # Perform t-SNE on anchor embeddings
+                # all_embeddings = np.concatenate(embeddings)
+                # tsne = TSNE(n_components=3, random_state=42)
+                # embeddings_3d = tsne.fit_transform(all_embeddings)
+                
+                # # Create a wandb.Table with the 3D embeddings
+                # columns = ["x", "y", "z"]
+                # data = [[x, y, z] for x, y, z in embeddings_3d]
+                # table = wandb.Table(data=data, columns=columns)
+                
+                # Log the table to wandb
+                wandb.log({
+                    # "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
+                    "avg_val_loss": total_val_loss / VAL_STEPS,
+                    "avg_positive_cosine_similarity": total_positive_cosine_similarity / VAL_STEPS,
+                    "avg_negative_cosine_similarity": total_negative_cosine_similarity / VAL_STEPS,
+                    "avg_positive_2norm_distance": total_positive_2norm_distance / VAL_STEPS,
+                    "avg_negative_2norm_distance": total_negative_2norm_distance / VAL_STEPS,
+                }, step=step)
 
     torch.save({
         'model_state_dict': model.state_dict()
