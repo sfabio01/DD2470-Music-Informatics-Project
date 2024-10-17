@@ -77,9 +77,9 @@ def main(args):
             _, negative_embed = model.encode(negative)
         
             # Compute Triplet Loss
-            triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-            #reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor)
-            loss = triplet_loss # + reconstruction_loss
+            #triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+            reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor)
+            loss = reconstruction_loss
         
         # Backward pass
         optim.zero_grad()
@@ -116,9 +116,9 @@ def main(args):
                     # embeddings.extend(negative_embed.detach().cpu().tolist())
                 
                     # Compute Triplet Loss
-                    triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-                    # reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor)
-                    loss = triplet_loss #+ reconstruction_loss
+                    #triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+                    reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor)
+                    loss = reconstruction_loss
                     
                     positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
