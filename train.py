@@ -56,7 +56,7 @@ def main(args):
         },
     )
         
-    triplet_loss_fn = nn.TripletMarginLoss(margin=0.2, p=2)
+    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
