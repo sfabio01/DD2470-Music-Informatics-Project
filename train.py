@@ -1,7 +1,7 @@
+import gc
 import argparse
 from itertools import cycle
-import numpy as np
-from sklearn.manifold import TSNE
+
 
 import torch
 import torch.nn as nn
@@ -9,11 +9,12 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 
 import wandb
+import numpy as np
 from tqdm import tqdm
+from sklearn.manifold import TSNE
 
 torch.random.manual_seed(1337)
 
-# from model import Song2Vec
 from model import Song2Vec
 from fma_dataset import FmaDataset
 
@@ -67,6 +68,11 @@ def main(args):
     train_loss, val_loss = float("inf"), float("inf")
     step_tqdm = tqdm(range(TOTAL_STEPS), desc="Training...")
     for step in step_tqdm:
+        if step % 100 == 0 and step != 0:
+            gc.collect()
+            torch.cuda.empty_cache()
+
+
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
