@@ -4,6 +4,8 @@ venv
 data/
 fma_metadata/
 !fma_metadata/*.json
+fma_processed/
+
 
 __pycache__/
 
