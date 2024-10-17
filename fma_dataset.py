@@ -96,12 +96,14 @@ class FmaDataset(Dataset):
         return len(self.train_val_splits[self.split])
 
     def _load_track(self, track_id: str) -> np.ndarray:
-        """Load track data from memmap file."""
-        memmap = self._load_memmap()
-        index = self.filename_to_index[f'{track_id.zfill(6)}']
-        x = memmap[index]
-        del memmap
-        return x
+        """Load track data from npy file."""
+        return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
+        # """Load track data from memmap file."""
+        # memmap = self._load_memmap()
+        # index = self.filename_to_index[f'{track_id.zfill(6)}']
+        # x = memmap[index]
+        # del memmap
+        # return x
         
     def _get_bin_for_value(self, value: float, category: str) -> str:
         """Get the appropriate bin for a value in a category."""
