@@ -82,11 +82,39 @@ def main(args):
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
-        
+                
+        shape = positive.shape
+
+        # reshape positive and negative to (batch_size * 20, n_channels, height, width)
+        positive = positive.view(-1, *positive.shape[2:])
+        negative = negative.view(-1, *negative.shape[2:])
+
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
-            positive_embed = model(positive)
-            negative_embed = model(negative)
+            with torch.no_grad():
+                positive_embed = model(positive) # shape (batch_size * 20, embed_dim)
+                negative_embed = model(negative)
+
+        # print("embedding shape: ", positive_embed.shape)
+
+        # reshape positive_embed and negative_embed to (batch_size, 20, embed_dim)
+        positive_embed = positive_embed.view(shape[0], shape[1], -1)
+        negative_embed = negative_embed.view(shape[0], shape[1], -1)
+
+        dist_pos = F.cosine_similarity(anchor_embed.unsqueeze(1), positive_embed, dim=-1) # shape (batch_size, 20)
+        dist_neg = F.cosine_similarity(anchor_embed.unsqueeze(1), negative_embed, dim=-1)
+
+        p = torch.argmin(dist_pos, dim=1) # shape (batch_size,)
+        n = torch.argmax(dist_neg, dim=1)
+
+        # reshape positive and negative back to (batch_size, 20, n_channels, height, width)
+        positive = positive.view(shape[0], shape[1], *positive.shape[1:])
+        negative = negative.view(shape[0], shape[1], *negative.shape[1:])
+
+        with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
+            # recompute positive and negative embeddings with gradients
+            positive_embed = model(positive[torch.arange(shape[0]), p]) # shape (batch_size, embed_dim)
+            negative_embed = model(negative[torch.arange(shape[0]), n])
         
             # Compute Triplet Loss
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
