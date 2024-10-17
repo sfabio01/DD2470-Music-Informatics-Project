@@ -16,7 +16,6 @@ torch.random.manual_seed(1337)
 # from model import Song2Vec
 from baseline_model import Song2Vec
 from fma_dataset import FmaDataset
-from hard_fma_dataset import HardFmaDataset
 
 class TripletLossWithCosineDistance(nn.Module):
     def __init__(self, margin=0.1):
@@ -39,8 +38,8 @@ def main(args):
     
     print(f"Training on device: {DEVICE}")
     
-    train_ds = HardFmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
-    val_ds = HardFmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
+    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
+    val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size)
 
@@ -70,9 +69,9 @@ def main(args):
         },
     )
         
-    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+    # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
     # triplet loss with cosine distance
-    # triplet_loss_fn = TripletLossWithCosineDistance(margin=0.5)
+    triplet_loss_fn = TripletLossWithCosineDistance(margin=0.5)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
@@ -82,60 +81,15 @@ def main(args):
     for step in step_tqdm:
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
-        print(anchor.shape, positive.shape)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
-                
-        shape = positive.shape
-
-        # reshape positive and negative to (batch_size * 20, n_channels, height, width)
-        positive = positive.view(-1, *positive.shape[2:])
-        negative = negative.view(-1, *negative.shape[2:])
-
+        
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
-            with torch.no_grad():
-                positive_embed = model(positive) # shape (batch_size * 20, embed_dim)
-                negative_embed = model(negative)
-
-        # print("embedding shape: ", positive_embed.shape)
-
-        # reshape positive_embed and negative_embed to (batch_size, 20, embed_dim)
-        positive_embed = positive_embed.view(shape[0], shape[1], -1)
-        negative_embed = negative_embed.view(shape[0], shape[1], -1)
-
-        # dist_pos = 1 - F.cosine_similarity(anchor_embed.unsqueeze(1), positive_embed, dim=-1) # shape (batch_size, 20)
-        # dist_neg = 1 - F.cosine_similarity(anchor_embed.unsqueeze(1), negative_embed, dim=-1)
-
-        dist_pos = torch.cdist(anchor_embed.unsqueeze(1), positive_embed, p=2).squeeze(1)  # shape (batch_size, 20)
-        dist_neg = torch.cdist(anchor_embed.unsqueeze(1), negative_embed, p=2).squeeze(1)
-
-        print(dist_pos.shape, dist_neg.shape)
-
-        p = torch.argmax(dist_pos, dim=1) # shape (batch_size,)
-        n = torch.argmin(dist_neg, dim=1)
-
-        p_max = torch.max(dist_pos, dim=1)[0]
-        n_min = torch.min(dist_neg, dim=1)[0]
-
-        print(p_max, n_min)
-
-        if (p_max < n_min).any():
-            print("FUUUUCK")
-            continue
-
-        # reshape positive and negative back to (batch_size, 20, n_channels, height, width)
-        positive = positive.view(shape[0], shape[1], *positive.shape[1:])
-        negative = negative.view(shape[0], shape[1], *negative.shape[1:])
-
-        with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-            # recompute positive and negative embeddings with gradients
-            positive_embed = model(positive[torch.arange(shape[0]), p]) # shape (batch_size, embed_dim)
-            negative_embed = model(negative[torch.arange(shape[0]), n])
+            positive_embed = model(positive)
+            negative_embed = model(negative)
         
             # Compute Triplet Loss
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-            reg_loss = (anchor_embed.norm(2, dim=1).mean() + positive_embed.norm(2, dim=1).mean() + negative_embed.norm(2, dim=1).mean()) / 3
-            loss -= 0.1 * reg_loss
         
         # Backward pass
         optim.zero_grad()
@@ -177,8 +131,8 @@ def main(args):
                     positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
                     
-                    positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed)
-                    negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed)
+                    positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
+                    negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
                     
                     total_positive_cosine_distance += positive_cosine_distance.mean().item()
                     total_negative_cosine_distance += negative_cosine_distance.mean().item()
