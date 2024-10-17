@@ -59,7 +59,7 @@ def main(args):
         
     # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
     # triplet loss with cosine distance
-    triplet_loss_fn = nn.TripletMarginWithDistanceLoss(margin=1.0, distance_function=F.cosine_similarity)
+    triplet_loss_fn = nn.TripletMarginWithDistanceLoss(margin=0.1, distance_function=lambda x, y: 1 - F.cosine_similarity(x, y))
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
