@@ -1,4 +1,3 @@
-import gc
 import argparse
 from itertools import cycle
 
@@ -66,11 +65,6 @@ def main(args):
     train_loss, val_loss = float("inf"), float("inf")
     step_tqdm = tqdm(range(TOTAL_STEPS), desc="Training...")
     for step in step_tqdm:
-        if step % 100 == 0 and step != 0:
-            gc.collect()
-            torch.cuda.empty_cache()
-
-
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
@@ -83,6 +77,11 @@ def main(args):
             triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
             reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
             loss = triplet_loss + reconstruction_loss
+
+        positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
+        negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
+        positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
+        negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
         
         # Backward pass
         optim.zero_grad()
@@ -90,7 +89,15 @@ def main(args):
         optim.step()
         
         train_loss = loss.item()
-        wandb.log({"train_loss": train_loss, "triplet_loss": triplet_loss.item(), "reconstruction_loss": reconstruction_loss.item()}, step=step)
+        wandb.log({
+            "train_loss": train_loss,
+            "triplet_loss": triplet_loss.item(),
+            "reconstruction_loss": reconstruction_loss.item(),
+            "positive_cosine_similarity": positive_cosine_similarity.mean().item(),
+            "negative_cosine_similarity": negative_cosine_similarity.mean().item(),
+            "positive_2norm_distance": positive_2norm_distance.mean().item(),
+            "negative_2norm_distance": negative_2norm_distance.mean().item(),
+        }, step=step)
         step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
         
         if step % VAL_INTERVAL == 0 and step != 0:
@@ -99,8 +106,8 @@ def main(args):
             total_val_loss = 0
             total_triplet_loss = 0
             total_reconstruction_loss = 0
-            total_positive_cosine_distance = 0
-            total_negative_cosine_distance = 0
+            total_positive_cosine_similarity = 0
+            total_negative_cosine_similarity = 0
             total_positive_2norm_distance = 0
             total_negative_2norm_distance = 0
             
@@ -118,8 +125,8 @@ def main(args):
                     triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
                     reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
                     
-                positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
-                negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
+                positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
+                negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
                 
                 positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
                 negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
@@ -128,8 +135,8 @@ def main(args):
                 total_val_loss += val_loss
                 total_triplet_loss += triplet_loss.item()
                 total_reconstruction_loss += reconstruction_loss.item()
-                total_positive_cosine_distance += positive_cosine_distance.mean().item()
-                total_negative_cosine_distance += negative_cosine_distance.mean().item()
+                total_positive_cosine_similarity += positive_cosine_similarity.mean().item()
+                total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
                 total_positive_2norm_distance += positive_2norm_distance.mean().item()
                 total_negative_2norm_distance += negative_2norm_distance.mean().item()
                 
@@ -149,8 +156,8 @@ def main(args):
             wandb.log({
                 # "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
                 "avg_val_loss": total_val_loss / VAL_STEPS,
-                "avg_positive_cosine_distance": total_positive_cosine_distance / VAL_STEPS,
-                "avg_negative_cosine_distance": total_negative_cosine_distance / VAL_STEPS,
+                "avg_positive_cosine_similarity": total_positive_cosine_similarity / VAL_STEPS,
+                "avg_negative_cosine_similarity": total_negative_cosine_similarity / VAL_STEPS,
                 "avg_positive_2norm_distance": total_positive_2norm_distance / VAL_STEPS,
                 "avg_negative_2norm_distance": total_negative_2norm_distance / VAL_STEPS,
             }, step=step)

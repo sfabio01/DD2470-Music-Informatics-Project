@@ -45,7 +45,8 @@ class Song2Vec(nn.Module):
         )
         
         # Attention layer
-        self.attention = nn.MultiheadAttention(embed_dim=1024, num_heads=8, batch_first=True)
+        self.latent_summary = nn.MultiheadAttention(embed_dim=1024, num_heads=8, batch_first=True)
+        self.downsample = nn.Linear(1024, 128)
         
         self.transformer_decoder = nn.TransformerEncoder(  # decoder in the sense that it is after the middle
             nn.TransformerEncoderLayer(d_model=1024, nhead=8, dim_feedforward=2048, batch_first=True),
@@ -72,8 +73,9 @@ class Song2Vec(nn.Module):
         context = self.transformer_encoder(x)
         
         # Attention to create single embedding
-        z, _ = self.attention(context.mean(dim=1, keepdim=True), context, context)
+        z, _ = self.latent_summary(context.mean(dim=1, keepdim=True), context, context)
         z = z.squeeze(1)
+        z = self.downsample(z)
         z = F.normalize(z, p=2, dim=1)
         
         return context, z
