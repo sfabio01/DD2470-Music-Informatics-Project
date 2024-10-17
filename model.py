@@ -86,7 +86,7 @@ class Song2Vec(nn.Module):
     def forward(self, x):
         x, z = self.encode(x)
         x = self.decode(x)
-        return self.scale(x).permute(0, 2, 3, 1), z
+        return self.scale(x).permute(0, 3, 2, 1), z
     
 
 if __name__ == "__main__":
