@@ -2,16 +2,14 @@ import gc
 import argparse
 from itertools import cycle
 
-
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
-from torch.utils.data import DataLoader
-
 import wandb
 import numpy as np
 from tqdm import tqdm
 from sklearn.manifold import TSNE
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+from torch.utils.data import DataLoader
 
 torch.random.manual_seed(1337)
 
@@ -82,10 +80,9 @@ def main(args):
             _, positive_embed = model.encode(positive)  # no need to decode positive / negative
             _, negative_embed = model.encode(negative)
         
-            # Compute Triplet Loss
-            #triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-            reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor)
-            loss = reconstruction_loss
+            triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+            reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
+            loss = triplet_loss + reconstruction_loss
         
         # Backward pass
         optim.zero_grad()
@@ -93,13 +90,15 @@ def main(args):
         optim.step()
         
         train_loss = loss.item()
-        wandb.log({"train_loss": train_loss}, step=step)
+        wandb.log({"train_loss": train_loss, "triplet_loss": triplet_loss.item(), "reconstruction_loss": reconstruction_loss.item()}, step=step)
         step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
         
         if step % VAL_INTERVAL == 0 and step != 0:
             step_tqdm.set_description(f"Validating...")
             model.eval()
             total_val_loss = 0
+            total_triplet_loss = 0
+            total_reconstruction_loss = 0
             total_positive_cosine_distance = 0
             total_negative_cosine_distance = 0
             total_positive_2norm_distance = 0
@@ -115,31 +114,26 @@ def main(args):
                     anchor_out, anchor_embed = model(anchor)
                     _, positive_embed = model.encode(positive)
                     _, negative_embed = model.encode(negative)
+
+                    triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
+                    reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
+                    
+                positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
+                negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
                 
-                    # Save anchor embeddings
-                    # embeddings.extend(anchor_embed.detach().cpu().tolist())
-                    # embeddings.extend(positive_embed.detach().cpu().tolist())
-                    # embeddings.extend(negative_embed.detach().cpu().tolist())
-                
-                    # Compute Triplet Loss
-                    #triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-                    reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor)
-                    loss = reconstruction_loss
-                    
-                    positive_cosine_distance = F.cosine_similarity(anchor_embed, positive_embed)
-                    negative_cosine_distance = F.cosine_similarity(anchor_embed, negative_embed)
-                    
-                    positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
-                    negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
-                    
-                    total_positive_cosine_distance += positive_cosine_distance.mean().item()
-                    total_negative_cosine_distance += negative_cosine_distance.mean().item()
-                    total_positive_2norm_distance += positive_2norm_distance.mean().item()
-                    total_negative_2norm_distance += negative_2norm_distance.mean().item()
-                    
+                positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
+                negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
+
                 val_loss = loss.item()
-                step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
                 total_val_loss += val_loss
+                total_triplet_loss += triplet_loss.item()
+                total_reconstruction_loss += reconstruction_loss.item()
+                total_positive_cosine_distance += positive_cosine_distance.mean().item()
+                total_negative_cosine_distance += negative_cosine_distance.mean().item()
+                total_positive_2norm_distance += positive_2norm_distance.mean().item()
+                total_negative_2norm_distance += negative_2norm_distance.mean().item()
+                
+                step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
             
             # Perform t-SNE on anchor embeddings
             # all_embeddings = np.concatenate(embeddings)
