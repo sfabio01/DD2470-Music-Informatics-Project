@@ -34,7 +34,7 @@ class Song2Vec(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.batch_norm = nn.BatchNorm2d(3)  # just learn the mean and std instead of computing them from data
+        self.batch_norm = nn.BatchNorm2d(3)
 
         self.encoder = CNNEncoder()
 
@@ -45,8 +45,8 @@ class Song2Vec(nn.Module):
         )
         
         # Attention layer
-        # self.latent_summary = nn.MultiheadAttention(embed_dim=1024, num_heads=8, batch_first=True)
-        # self.downsample = nn.Linear(1024, 128)
+        self.latent_summary = nn.MultiheadAttention(embed_dim=1024, num_heads=8, batch_first=True)
+        self.query_vector = nn.Parameter(torch.randn(1, 1, 1024))
         
         self.transformer_decoder = nn.TransformerEncoder(  # decoder in the sense that it is after the middle
             nn.TransformerEncoderLayer(d_model=1024, nhead=8, dim_feedforward=2048, batch_first=True),
@@ -71,14 +71,11 @@ class Song2Vec(nn.Module):
         pos = self.w_pe(torch.arange(L, device=DEVICE)).unsqueeze(0).expand(B, -1, -1)
         x = x + pos
         context = self.transformer_encoder(x)
-        
-        # Attention to create single embedding
-        # z, _ = self.latent_summary(context.mean(dim=1, keepdim=True), context, context)
-        # z = z.squeeze(1)
-        # z = self.downsample(z)
-        z = context.mean(dim=1)
-        z = F.normalize(z, p=2, dim=1)
-        
+
+        query = self.query_vector.expand(B, -1, -1)  # Expand for batch size
+        z, _ = self.latent_summary(query, context, context)
+        z = F.normalize(z.squeeze(1), p=2, dim=1)
+            
         return context, z
 
     def decode(self, context):
