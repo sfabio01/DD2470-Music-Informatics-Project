@@ -9,9 +9,10 @@ from fma_dataset import FmaDataset
 class CNNFeatureExtractor(nn.Module):
     def __init__(self):
         super(CNNFeatureExtractor, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=(3,4), stride=(1,2), padding=(1,1))
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=(3,4), stride=(1,2), padding=(1,1))
-        self.convlast = nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=(4,4), stride=(2,2), padding=(1,1))
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=(4,4), stride=(2,2), padding=(1,1))
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=(4,4), stride=(2,2), padding=(1,1))
+        self.convlast = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
         
     def forward(self, x):
         x = self.conv1(x)
@@ -28,7 +29,7 @@ class Song2Vec(nn.Module):
 
         self.cnn = CNNFeatureExtractor()
         
-        self.gru = nn.GRU(input_size=1024, hidden_size=1024, num_layers=4, batch_first=True)
+        self.gru = nn.GRU(input_size=128, hidden_size=512, num_layers=4, batch_first=True)
         
     def forward(self, x):
         x = x.permute(0, 3, 1, 2) # B, H, W, C -> B, C, H, W
@@ -48,6 +49,6 @@ class Song2Vec(nn.Module):
 if __name__ == '__main__':
     model = Song2Vec()
     print(model)
-    x = torch.randn(2, 1024, 2048, 3)
+    x = torch.randn(2, 128, 256, 3)
     y = model(x)
     print(y.shape)
