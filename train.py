@@ -57,7 +57,9 @@ def main(args):
         },
     )
         
-    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+    # triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+    # triplet loss with cosine distance
+    triplet_loss_fn = nn.TripletMarginWithDistanceLoss(margin=1.0, distance_function=F.cosine_similarity)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
@@ -95,7 +97,7 @@ def main(args):
             total_positive_2norm_distance = 0
             total_negative_2norm_distance = 0
             
-            embeddings = []
+            # embeddings = []
             
             for _ in range(VAL_STEPS):
                 anchor, positive, negative = next(val_dl)
@@ -107,9 +109,9 @@ def main(args):
                     negative_embed = model(negative)
                 
                     # Save anchor embeddings
-                    embeddings.extend(anchor_embed.detach().cpu().tolist())
-                    embeddings.extend(positive_embed.detach().cpu().tolist())
-                    embeddings.extend(negative_embed.detach().cpu().tolist())
+                    # embeddings.extend(anchor_embed.detach().cpu().tolist())
+                    # embeddings.extend(positive_embed.detach().cpu().tolist())
+                    # embeddings.extend(negative_embed.detach().cpu().tolist())
                 
                     # Compute Triplet Loss
                     loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
@@ -130,18 +132,18 @@ def main(args):
                 total_val_loss += val_loss
             
             # Perform t-SNE on anchor embeddings
-            all_embeddings = np.concatenate(embeddings)
-            tsne = TSNE(n_components=3, random_state=42)
-            embeddings_3d = tsne.fit_transform(all_embeddings)
+            # all_embeddings = np.concatenate(embeddings)
+            # tsne = TSNE(n_components=3, random_state=42)
+            # embeddings_3d = tsne.fit_transform(all_embeddings)
             
-            # Create a wandb.Table with the 3D embeddings
-            columns = ["x", "y", "z"]
-            data = [[x, y, z] for x, y, z in embeddings_3d]
-            table = wandb.Table(data=data, columns=columns)
+            # # Create a wandb.Table with the 3D embeddings
+            # columns = ["x", "y", "z"]
+            # data = [[x, y, z] for x, y, z in embeddings_3d]
+            # table = wandb.Table(data=data, columns=columns)
             
             # Log the table to wandb
             wandb.log({
-                "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
+                # "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
                 "avg_val_loss": total_val_loss / VAL_STEPS,
                 "avg_positive_cosine_distance": total_positive_cosine_distance / VAL_STEPS,
                 "avg_negative_cosine_distance": total_negative_cosine_distance / VAL_STEPS,
