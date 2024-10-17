@@ -73,6 +73,8 @@ def main(args):
         
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_out, anchor_embed = model(anchor)
+            print(anchor_out.shape, anchor_embed.shape)
+            print(anchor.shape)
             _, positive_embed = model.encode(positive)  # no need to decode positive / negative
             _, negative_embed = model.encode(negative)
         
