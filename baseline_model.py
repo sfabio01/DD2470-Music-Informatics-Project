@@ -38,34 +38,15 @@ class Song2Vec(nn.Module):
     def __init__(self):
         super(Song2Vec, self).__init__()
 
-        self.batch_norm = nn.BatchNorm2d(3)
-
         self.encoder = CNNEncoder()
-
-        # GRU Encoder
         self.gru_encoder = nn.GRU(input_size=256, hidden_size=512, num_layers=2, batch_first=True, bidirectional=True)
 
-        # GRU Decoder (512 x 2 for bidirectional)
         self.gru_decoder = nn.GRU(input_size=1024, hidden_size=256, num_layers=2, batch_first=True, bidirectional=True)
-
         self.fc_dec = nn.Linear(in_features=512, out_features=256)
         self.decoder = CNNDecoder()
-
-    def standardize(self, x):
-        mean, var = self.batch_norm.running_mean.clone().detach(), self.batch_norm.running_var.clone().detach()
-        x = (x - mean) / torch.sqrt(var + 1e-5)
-        return x
-    
-    def unstandardize(self, x):
-        mean, var = self.batch_norm.running_mean.clone().detach(), self.batch_norm.running_var.clone().detach()
-        x = x * torch.sqrt(var + 1e-5) + mean
-        return x
         
     def encode(self, x):
         x = x.permute(0, 3, 1, 2)
-
-        x = self.batch_norm(x)  # "learn" the mean and variance of the audio data here, applied w.o. gradient accumulation to the decoded output
-
         x = self.encoder(x)
         
         B, H_enc, W_enc = x.shape
@@ -80,18 +61,14 @@ class Song2Vec(nn.Module):
 
     def decode(self, context):
         out, _ = self.gru_decoder(context)
-
         out = self.fc_dec(out)
-
-        x = self.decoder(out.permute(0, 2, 1)) 
-
-        return x
+        return self.decoder(out.permute(0, 2, 1)) 
 
     def forward(self, x):
         context, z = self.encode(x)
         x_reconstructed = self.decode(context)
         x_reconstructed = x_reconstructed.permute(0, 2, 3, 1)
-        return self.unstandardize(x_reconstructed), z
+        return x_reconstructed, z
 
 if __name__ == "__main__":
     model = Song2Vec()

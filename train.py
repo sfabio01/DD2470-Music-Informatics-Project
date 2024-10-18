@@ -1,4 +1,6 @@
+import math
 import argparse
+from pathlib import Path
 
 import wandb
 import numpy as np
@@ -19,7 +21,8 @@ def infinite_loader(data_loader):
         for batch in data_loader:
             yield batch
 
-
+CHECKPOINT_PATH = Path("checkpoints")
+CHECKPOINT_PATH.mkdir(parents=True, exist_ok=True)
 def main(args):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     DTYPE = torch.bfloat16 if DEVICE=="cuda" else torch.float16
@@ -37,12 +40,45 @@ def main(args):
     TOTAL_STEPS = len(train_dl) * args.epochs
     VAL_INTERVAL = len(train_dl) // 10  # i.e. how often per epoch to validate with a portion of the validation set
     VAL_STEPS = len(val_dl) // 10  # i.e. the size of that portion
+    WARMUP_STEPS = int(TOTAL_STEPS * 0.03)
+    CHECKPOINT_INTERVAL = TOTAL_STEPS // 10
+
+    MEAN = torch.tensor([-18.2629, 0.6244, 0.1782], device=DEVICE).view(1, 1, 1, 3)
+    STD = torch.tensor([17.5452, 0.2233, 0.2252], device=DEVICE).view(1, 1, 1, 3)
+
+    def normalize(audio):
+        return (audio - MEAN) / STD
+
+    def unnormalize(normalized_audio):
+        return normalized_audio * STD + MEAN
+
+    def get_lr(step:int)->float:
+        if step < WARMUP_STEPS:  # 1) linear warmup for WARMUP_STEPS steps
+            return args.max_lr * (step + 1) / WARMUP_STEPS
+        if step > TOTAL_STEPS:  # 2) if it > TOTAL_STEPS, return min learning rate
+            return args.min_lr
+        # 3) in between, use cosine decay down to min learning rate
+        decay_ratio = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
+        assert 0 <= decay_ratio <= 1
+        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
+        return args.min_lr + coeff * (args.max_lr - args.min_lr)
     
+    def get_curriculum_ratio(step:int)->tuple[float,float]:
+        if step < WARMUP_STEPS:
+            return 1.0, 0.0  # only do reconstruction loss during warmup
+        if step > TOTAL_STEPS:
+            return 0.0, 1.0  # only do triplet loss if trained further than TOTAL_STEPS
+        # in between, use cosine decay
+        decay_ratio = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
+        assert 0 <= decay_ratio <= 1
+        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
+        return coeff, 1.0 - coeff
+
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.lr, fused=False)  # fused speeds up training
+    optim = torch.optim.AdamW(model.parameters(), lr=args.max_lr, fused=False)  # fused speeds up training
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
@@ -72,20 +108,25 @@ def main(args):
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
-        
+        anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
+
+        lr = get_lr(step)
+        reconstruction_ratio, triplet_ratio = get_curriculum_ratio(step)
+        for param_group in optim.param_groups: param_group["lr"] = lr
+
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_out, anchor_embed = model(anchor)
             _, positive_embed = model.encode(positive)  # no need to decode positive / negative
             _, negative_embed = model.encode(negative)
+
+            anchor_out = unnormalize(anchor_out)
         
+            reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
             triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-            reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
-            loss = triplet_loss + reconstruction_loss
+            loss = reconstruction_loss * reconstruction_ratio + triplet_loss * triplet_ratio
 
         positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
         negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
-        positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
-        negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
         
         # Backward pass
         optim.zero_grad()
@@ -94,13 +135,13 @@ def main(args):
         
         train_loss = loss.item()
         wandb.log({
-            "train_loss": train_loss,
-            "triplet_loss": triplet_loss.item(),
-            "reconstruction_loss": reconstruction_loss.item(),
-            "positive_cosine_similarity": positive_cosine_similarity.mean().item(),
-            "negative_cosine_similarity": negative_cosine_similarity.mean().item(),
-            "positive_2norm_distance": positive_2norm_distance.mean().item(),
-            "negative_2norm_distance": negative_2norm_distance.mean().item(),
+            "lr": lr,
+            "reconstruction_ratio": reconstruction_ratio,
+            "loss/total_loss": train_loss,
+            "loss/triplet": triplet_loss.item(),
+            "loss/reconstruction": reconstruction_loss.item(),
+            "cosine_similarity/positive": positive_cosine_similarity.mean().item(),
+            "cosine_similarity/negative": negative_cosine_similarity.mean().item()
         }, step=step)
         step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
         
@@ -113,10 +154,8 @@ def main(args):
                 total_reconstruction_loss = 0
                 total_positive_cosine_similarity = 0
                 total_negative_cosine_similarity = 0
-                total_positive_2norm_distance = 0
-                total_negative_2norm_distance = 0
                 
-                # embeddings = []
+                embeddings = []
                 
                 for _ in range(VAL_STEPS):
                     anchor, positive, negative = next(val_dl)
@@ -127,14 +166,18 @@ def main(args):
                         _, positive_embed = model.encode(positive)
                         _, negative_embed = model.encode(negative)
 
+                        anchor_out = unnormalize(anchor_out)
+
+                        reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
                         triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-                        reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # TODO:
+                        loss = reconstruction_loss * reconstruction_ratio + triplet_loss * triplet_ratio
                         
+                    embeddings.append(anchor_embed.detach().cpu().numpy())
+                    embeddings.append(positive_embed.detach().cpu().numpy())
+                    embeddings.append(negative_embed.detach().cpu().numpy())
+                    
                     positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
-                    
-                    positive_2norm_distance = F.pairwise_distance(anchor_embed, positive_embed, p=2)
-                    negative_2norm_distance = F.pairwise_distance(anchor_embed, negative_embed, p=2)
 
                     val_loss = loss.item()
                     total_val_loss += val_loss
@@ -142,34 +185,36 @@ def main(args):
                     total_reconstruction_loss += reconstruction_loss.item()
                     total_positive_cosine_similarity += positive_cosine_similarity.mean().item()
                     total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
-                    total_positive_2norm_distance += positive_2norm_distance.mean().item()
-                    total_negative_2norm_distance += negative_2norm_distance.mean().item()
                     
                     step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
                 
                 # Perform t-SNE on anchor embeddings
-                # all_embeddings = np.concatenate(embeddings)
-                # tsne = TSNE(n_components=3, random_state=42)
-                # embeddings_3d = tsne.fit_transform(all_embeddings)
+                all_embeddings = np.concatenate(embeddings)
+                tsne = TSNE(n_components=3, random_state=42)
+                embeddings_3d = tsne.fit_transform(all_embeddings)
                 
-                # # Create a wandb.Table with the 3D embeddings
-                # columns = ["x", "y", "z"]
-                # data = [[x, y, z] for x, y, z in embeddings_3d]
-                # table = wandb.Table(data=data, columns=columns)
+                # Create a wandb.Table with the 3D embeddings
+                columns = ["x", "y", "z"]
+                data = [[x, y, z] for x, y, z in embeddings_3d]
+                table = wandb.Table(data=data, columns=columns)
                 
                 # Log the table to wandb
                 wandb.log({
-                    # "anchor_embeddings_3d": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
-                    "avg_val_loss": total_val_loss / VAL_STEPS,
-                    "avg_positive_cosine_similarity": total_positive_cosine_similarity / VAL_STEPS,
-                    "avg_negative_cosine_similarity": total_negative_cosine_similarity / VAL_STEPS,
-                    "avg_positive_2norm_distance": total_positive_2norm_distance / VAL_STEPS,
-                    "avg_negative_2norm_distance": total_negative_2norm_distance / VAL_STEPS,
+                    "embeddings_tsne": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
+                    "loss/avg_val_total": total_val_loss / VAL_STEPS,
+                    "loss/avg_val_triplet": total_triplet_loss / VAL_STEPS,
+                    "loss/avg_val_reconstruction": total_reconstruction_loss / VAL_STEPS,
+                    "cosine_similarity/avg_val_positive": total_positive_cosine_similarity / VAL_STEPS,
+                    "cosine_similarity/avg_val_negative": total_negative_cosine_similarity / VAL_STEPS,
                 }, step=step)
 
-    torch.save({
-        'model_state_dict': model.state_dict()
-    }, f"epoch_{args.epochs}.pt")
+        if step % CHECKPOINT_INTERVAL == 0 and step != 0:
+            run_path = CHECKPOINT_PATH / args.run_name
+            run_path.mkdir(parents=True, exist_ok=True)
+            torch.save({
+                "step": step,
+                "model_state_dict": model.state_dict()
+            }, run_path / f"step_{step}.pt")
 
 
 if __name__ == "__main__":
@@ -177,7 +222,8 @@ if __name__ == "__main__":
     parser.add_argument("--run_name", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--max_lr", type=float, default=3e-4, help="Maximum learning rate")
+    parser.add_argument("--min_lr", type=float, default=6e-5, help="Minimum learning rate")
     parser.add_argument("--val_interval", type=int, default=8, help="How many times per training epoch to process a correspondingly large validation portion")
     parser.add_argument("--skip_sanity_check", action="store_true")
     args = parser.parse_args()
