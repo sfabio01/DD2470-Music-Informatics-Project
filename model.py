@@ -11,9 +11,9 @@ class CNNEncoder(nn.Module):
         self.convlast = nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
         
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.convlast(x))
+        x = F.leaky_relu(self.conv1(x))
+        x = F.leaky_relu(self.conv2(x))
+        x = F.leaky_relu(self.convlast(x))
         return x.squeeze(1)
     
 class CNNDecoder(nn.Module):
@@ -25,16 +25,14 @@ class CNNDecoder(nn.Module):
         
     def forward(self, x):
         x = x.unsqueeze(1)
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
+        x = F.leaky_relu(self.conv1(x))
+        x = F.leaky_relu(self.conv2(x))
         return self.convlast(x)
     
 
 class Song2Vec(nn.Module):
     def __init__(self):
         super().__init__()
-
-        self.batch_norm = nn.BatchNorm2d(3)
 
         self.encoder = CNNEncoder()
 
@@ -44,8 +42,6 @@ class Song2Vec(nn.Module):
             num_layers=3
         )
         
-        # Attention layer
-        self.latent_summary = nn.MultiheadAttention(embed_dim=1024, num_heads=8, batch_first=True)
         self.query_vector = nn.Parameter(torch.randn(1, 1, 1024))
         
         self.transformer_decoder = nn.TransformerEncoder(  # decoder in the sense that it is after the middle
@@ -54,27 +50,23 @@ class Song2Vec(nn.Module):
         )
 
         self.decoder = CNNDecoder()
-
-        self.output_scale = nn.Parameter(torch.ones(1, 3, 1, 1), requires_grad=True)  # Learnt mean and std
-        self.output_shift = nn.Parameter(torch.zeros(1, 3, 1, 1), requires_grad=True)
-
-    def scale(self, x):
-        return x * self.output_scale + self.output_shift
     
     def encode(self, x):
         DEVICE = x.device
-        
-        x = self.batch_norm(x.permute(0, 3, 2, 1))
+
+        x = x.permute(0, 3, 2, 1)
 
         x = self.encoder(x)
         B, L, D = x.shape
         pos = self.w_pe(torch.arange(L, device=DEVICE)).unsqueeze(0).expand(B, -1, -1)
-        x = x + pos
-        context = self.transformer_encoder(x)
+        context = x + pos
+        context_w_query = torch.cat([context, self.query_vector.expand(B, -1, -1)], dim=1)
+        context_w_query = self.transformer_encoder(context_w_query)
 
-        query = self.query_vector.expand(B, -1, -1)  # Expand for batch size
-        z, _ = self.latent_summary(query, context, context)
-        z = F.normalize(z.squeeze(1), p=2, dim=1)
+        context = context_w_query[:, :-1, :]
+        
+        z = context_w_query[:, -1, :]   
+        z = F.normalize(z, p=2, dim=1)
             
         return context, z
 
@@ -86,7 +78,7 @@ class Song2Vec(nn.Module):
     def forward(self, x):
         x, z = self.encode(x)
         x = self.decode(x)
-        return self.scale(x).permute(0, 3, 2, 1), z
+        return x.permute(0, 3, 2, 1), z
     
 
 if __name__ == "__main__":
