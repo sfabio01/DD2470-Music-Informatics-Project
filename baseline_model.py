@@ -5,9 +5,9 @@ import torch.nn.functional as F
 class CNNEncoder(nn.Module):
     def __init__(self):
         super(CNNEncoder, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))  # i.e. half time twice, freq once
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
-        self.conv3 = nn.Conv2d(32, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))  # i.e. half thrice twice, freq twice
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
         self.convlast = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
         
     def forward(self, x):
@@ -22,8 +22,8 @@ class CNNDecoder(nn.Module):
     def __init__(self):
         super(CNNDecoder, self).__init__()
         self.conv1 = nn.ConvTranspose2d(1, 64, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
-        self.conv2 = nn.ConvTranspose2d(64, 32, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
-        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.conv2 = nn.ConvTranspose2d(64, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
         self.convlast = nn.ConvTranspose2d(16, 3, kernel_size=1, stride=1, padding=0)
         
     def forward(self, x):
@@ -43,12 +43,12 @@ class Song2Vec(nn.Module):
         self.encoder = CNNEncoder()
 
         # GRU Encoder
-        self.gru_encoder = nn.GRU(input_size=512, hidden_size=512, num_layers=2, batch_first=True, bidirectional=True)
+        self.gru_encoder = nn.GRU(input_size=256, hidden_size=512, num_layers=2, batch_first=True, bidirectional=True)
 
         # GRU Decoder (512 x 2 for bidirectional)
-        self.gru_decoder = nn.GRU(input_size=1024, hidden_size=512, num_layers=2, batch_first=True, bidirectional=True)
+        self.gru_decoder = nn.GRU(input_size=1024, hidden_size=256, num_layers=2, batch_first=True, bidirectional=True)
 
-        self.fc_dec = nn.Linear(in_features=1024, out_features=512)
+        self.fc_dec = nn.Linear(in_features=512, out_features=256)
         self.decoder = CNNDecoder()
 
     def standardize(self, x):
