@@ -87,7 +87,7 @@ def main(args):
         name=args.run_name,
         project="Song2Vec",
         config={
-            "learning_rate": args.lr,
+            "learning_rate": args.max_lr,
             "epochs": args.epochs,
             "n_training_examples": len(train_ds),
             "n_validation_examples": len(val_ds),
