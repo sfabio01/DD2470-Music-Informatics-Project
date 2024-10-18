@@ -63,16 +63,16 @@ def main(args):
         coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
         return args.min_lr + coeff * (args.max_lr - args.min_lr)
     
-    def get_curriculum_ratio(step:int)->tuple[float,float]:
+    def get_curriculum_ratio(step: int) -> tuple[float, float]:
         if step < WARMUP_STEPS:
-            return 1.0, 0.0  # only do reconstruction loss during warmup
+            return 0.7, 0.3  # Start with 70% reconstruction, 30% triplet loss
         if step > TOTAL_STEPS:
-            return 0.0, 1.0  # only do triplet loss if trained further than TOTAL_STEPS
-        # in between, use cosine decay
-        decay_ratio = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        assert 0 <= decay_ratio <= 1
-        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
-        return coeff, 1.0 - coeff
+            return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
+        # Linear interpolation between start and end ratios
+        progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
+        reconstruction_ratio = 0.7 - (0.6 * progress)  # 0.7 to 0.1
+        triplet_ratio = 0.3 + (0.6 * progress)  # 0.3 to 0.9
+        return reconstruction_ratio, triplet_ratio
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)
