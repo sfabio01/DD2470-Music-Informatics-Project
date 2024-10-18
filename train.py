@@ -155,8 +155,6 @@ def main(args):
                 total_positive_cosine_similarity = 0
                 total_negative_cosine_similarity = 0
                 
-                embeddings = []
-                
                 for _ in range(VAL_STEPS):
                     anchor, positive, negative = next(val_dl)
                     anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
@@ -172,10 +170,6 @@ def main(args):
                         triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
                         loss = reconstruction_loss * reconstruction_ratio + triplet_loss * triplet_ratio
                         
-                    embeddings.append(anchor_embed.detach().cpu().numpy())
-                    embeddings.append(positive_embed.detach().cpu().numpy())
-                    embeddings.append(negative_embed.detach().cpu().numpy())
-                    
                     positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
 
@@ -187,20 +181,8 @@ def main(args):
                     total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
                     
                     step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
-                
-                # Perform t-SNE on anchor embeddings
-                all_embeddings = np.concatenate(embeddings)
-                tsne = TSNE(n_components=3, random_state=42)
-                embeddings_3d = tsne.fit_transform(all_embeddings)
-                
-                # Create a wandb.Table with the 3D embeddings
-                columns = ["x", "y", "z"]
-                data = [[x, y, z] for x, y, z in embeddings_3d]
-                table = wandb.Table(data=data, columns=columns)
-                
-                # Log the table to wandb
+
                 wandb.log({
-                    "embeddings_tsne": wandb.plot_3d_scatter(table, "x", "y", "z", title="Anchor Embeddings (t-SNE 3D)"),
                     "loss/avg_val_total": total_val_loss / VAL_STEPS,
                     "loss/avg_val_triplet": total_triplet_loss / VAL_STEPS,
                     "loss/avg_val_reconstruction": total_reconstruction_loss / VAL_STEPS,
