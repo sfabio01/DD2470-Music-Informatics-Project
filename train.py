@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 torch.random.manual_seed(1337)
 
-from model import Song2Vec
+from baseline_model import Song2Vec
 from fma_dataset import FmaDataset
 
 def infinite_loader(data_loader):
