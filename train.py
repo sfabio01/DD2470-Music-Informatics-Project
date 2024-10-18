@@ -65,13 +65,13 @@ def main(args):
     
     def get_curriculum_ratio(step: int) -> tuple[float, float]:
         if step < WARMUP_STEPS:
-            return 0.7, 0.3  # Start with 70% reconstruction, 30% triplet loss
+            return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
         if step > TOTAL_STEPS:
             return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
         # Linear interpolation between start and end ratios
         progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        reconstruction_ratio = 0.7 - (0.6 * progress)  # 0.7 to 0.1
-        triplet_ratio = 0.3 + (0.6 * progress)  # 0.3 to 0.9
+        reconstruction_ratio = 0.5 - (0.5 * progress)  # 0.5 to 0.0
+        triplet_ratio = 0.5 + (0.5 * progress)  # 0.5 to 1.0
         return reconstruction_ratio, triplet_ratio
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
