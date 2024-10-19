@@ -122,8 +122,8 @@ def main(args):
 
         # recompute the embeddings for the selected positive and negative samples, with gradient tracking
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-            positive_embed = model(positive[:, p])
-            negative_embed = model(negative[:, n])
+            positive_embed = model(positive[torch.arange(orig_shape[0]), p])
+            negative_embed = model(negative[torch.arange(orig_shape[0]), n])
 
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
 
