@@ -116,8 +116,8 @@ def main(args):
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_out, anchor_embed = model(anchor)
-            _, positive_embed = model.encode(positive)  # no need to decode positive / negative
-            _, negative_embed = model.encode(negative)
+            positive_embed, _ = model.encode(positive)  # no need to decode positive / negative
+            negative_embed, _ = model.encode(negative)
 
             anchor_out = unnormalize(anchor_out)
         
@@ -161,8 +161,8 @@ def main(args):
                     
                     with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
                         anchor_out, anchor_embed = model(anchor)
-                        _, positive_embed = model.encode(positive)
-                        _, negative_embed = model.encode(negative)
+                        positive_embed, _ = model.encode(positive)
+                        negative_embed, _ = model.encode(negative)
 
                         anchor_out = unnormalize(anchor_out)
 

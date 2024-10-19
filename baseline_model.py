@@ -62,18 +62,17 @@ class Song2Vec(nn.Module):
         
         out, h_n = self.gru_encoder(x)  # h_n: (num_layers * num_directions, B, hidden_size)
         z = h_n  # We'll use the entire hidden state
+        z = z.permute(1, 0, 2).contiguous().view(B, -1)
         return z, W_enc  # Return z and sequence length for decoder
     
     def decode(self, z, seq_len):
         # Map encoder hidden state z to decoder initial hidden state h_0
-        B = z.size(1)
-        z_flat = z.permute(1, 0, 2).contiguous().view(B, -1)  # Shape: (B, num_layers * num_directions * hidden_size)
-        h_0 = self.hid_mapping(z_flat)  # Shape: (B, num_layers * num_directions * decoder_hidden_size)
-        h_0 = h_0.view(B, self.gru_decoder.num_layers * (2 if self.gru_decoder.bidirectional else 1), self.gru_decoder.hidden_size)
+        h_0 = self.hid_mapping(z)  # Shape: (B, num_layers * num_directions * decoder_hidden_size)
+        h_0 = h_0.view(z.shape[0], self.gru_decoder.num_layers * (2 if self.gru_decoder.bidirectional else 1), self.gru_decoder.hidden_size)
         h_0 = h_0.permute(1, 0, 2).contiguous()  # Shape: (num_layers * num_directions, B, decoder_hidden_size)
         
         # Prepare decoder inputs (zeros)
-        decoder_inputs = torch.zeros(B, seq_len, 1).to(z.device)  # Input size is 1
+        decoder_inputs = torch.zeros(z.shape[0], seq_len, 1).to(z.device)  # Input size is 1
         
         # Run decoder GRU
         out, _ = self.gru_decoder(decoder_inputs, h_0)  # out: (B, seq_len, num_directions * hidden_size)
@@ -85,7 +84,7 @@ class Song2Vec(nn.Module):
         z, seq_len = self.encode(x)
         x_reconstructed = self.decode(z, seq_len)
         x_reconstructed = x_reconstructed.permute(0, 2, 3, 1)  # Shape: (B, H, W, C)
-        return x_reconstructed, z.permute(1, 0, 2).contiguous().view(z.shape[1], -1)  # Flatten z to (B, num_layers * num_directions * hidden_size)
+        return x_reconstructed, z
 
 if __name__ == "__main__":
     model = Song2Vec()
