@@ -116,7 +116,7 @@ def main(args):
         train_loss = loss.item()
         wandb.log({
             "lr": lr,
-            "loss/triplet": triplet_loss.item(),
+            "loss/triplet": train_loss,
             "cosine_similarity/positive": positive_cosine_similarity.mean().item(),
             "cosine_similarity/negative": negative_cosine_similarity.mean().item()
         }, step=step)
@@ -144,7 +144,7 @@ def main(args):
                     positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
 
-                    val_loss = loss.item()
+                    val_loss = triplet_loss.item()
                     total_triplet_loss += val_loss
                     total_positive_cosine_similarity += positive_cosine_similarity.mean().item()
                     total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
