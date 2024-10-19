@@ -70,8 +70,8 @@ def main(args):
             return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
         # Linear interpolation between start and end ratios
         progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        reconstruction_ratio = 0.5 - (0.5 * progress)  # 0.5 to 0.0
-        triplet_ratio = 0.5 + (0.5 * progress)  # 0.5 to 1.0
+        reconstruction_ratio = 0.5 - (0.4 * progress)  # 0.5 to 0.1
+        triplet_ratio = 0.5 + (0.4 * progress)  # 0.5 to 0.9
         return reconstruction_ratio, triplet_ratio
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
