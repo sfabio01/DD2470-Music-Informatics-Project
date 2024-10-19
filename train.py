@@ -110,8 +110,6 @@ def main(args):
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
         anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
 
-        for param_group in optim.param_groups: param_group["lr"] = lr
-
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_out, anchor_embed = model(anchor)
             positive_embed, _ = model.encode(positive)  # no need to decode positive / negative
@@ -133,7 +131,6 @@ def main(args):
         
         train_loss = loss.item()
         wandb.log({
-            "lr": lr,
             "reconstruction_ratio": reconstruction_ratio,
             "loss/total_loss": train_loss,
             "loss/triplet": triplet_loss.item(),
