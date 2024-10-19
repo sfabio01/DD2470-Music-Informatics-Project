@@ -100,8 +100,10 @@ def main(args):
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
-            positive_embed = model(positive)
-            negative_embed = model(negative)
+
+            with torch.no_grad():
+                positive_embed = model(positive).detach()
+                negative_embed = model(negative).detach()
 
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
 
