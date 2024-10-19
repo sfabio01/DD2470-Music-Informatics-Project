@@ -189,6 +189,7 @@ def main(args):
                     "cosine_similarity/avg_val_positive": total_positive_cosine_similarity / VAL_STEPS,
                     "cosine_similarity/avg_val_negative": total_negative_cosine_similarity / VAL_STEPS,
                 }, step=step)
+            model.train()
 
         if step % CHECKPOINT_INTERVAL == 0 and step != 0:
             run_path = CHECKPOINT_PATH / args.run_name
