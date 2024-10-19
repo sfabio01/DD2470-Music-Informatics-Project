@@ -60,16 +60,20 @@ def main(args):
     #     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
     #     return args.min_lr + coeff * (args.max_lr - args.min_lr)
     
-    # def get_curriculum_ratio(step: int) -> tuple[float, float]:
-    #     if step < WARMUP_STEPS:
-    #         return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
-    #     if step > TOTAL_STEPS:
-    #         return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
-    #     # Linear interpolation between start and end ratios
-    #     progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-    #     reconstruction_ratio = 0.5 - (0.4 * progress)  # 0.5 to 0.1
-    #     triplet_ratio = 0.5 + (0.4 * progress)  # 0.5 to 0.9
-    #     return reconstruction_ratio, triplet_ratio
+    def get_curriculum_ratio(step: int) -> tuple[float, float]:
+        if step < WARMUP_STEPS:
+            return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
+        if step > TOTAL_STEPS:
+            return 0.01, 0.99  # End with 1% reconstruction, 99% triplet loss
+        
+        # Exponential decay for reconstruction ratio
+        progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
+        decay_rate = 5  # Increase this value for faster decay
+        reconstruction_ratio = 0.5 * math.exp(-decay_rate * progress)
+        reconstruction_ratio = max(reconstruction_ratio, 0.01)  # Ensure it doesn't go below 0.01
+        
+        triplet_ratio = 1 - reconstruction_ratio
+        return reconstruction_ratio, triplet_ratio
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)
@@ -97,8 +101,6 @@ def main(args):
     reconstruction_loss_fn = nn.MSELoss()
     triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
 
-    reconstruction_ratio, triplet_ratio = 0.1, 0.9
-
     model = torch.compile(model, backend="aot_eager")
     model.train()
 
@@ -109,6 +111,8 @@ def main(args):
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
         anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
+
+        reconstruction_ratio, triplet_ratio = get_curriculum_ratio(step)
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_out, anchor_embed = model(anchor)
