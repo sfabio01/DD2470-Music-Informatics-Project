@@ -113,14 +113,14 @@ class HardFmaDataset(Dataset):
         track_id = str(track['track_id'])
         
         # Select random category and get samples
-        category = "genre" # np.random.choice(METADATA_INDEX)
+        category = np.random.choice(METADATA_INDEX)
         positive_ids, negative_ids = self._get_samples(track, category)
         
         # Load and transform samples
         samples = [
-            torch.tensor(self._load_track(track_id)),
-            torch.tensor(self._load_tracks(positive_ids)),
-            torch.tensor(self._load_tracks(negative_ids))
+            torch.from_numpy(self._load_track(track_id)),
+            torch.from_numpy(self._load_tracks(positive_ids)),
+            torch.from_numpy(self._load_tracks(negative_ids))
         ]
         
         if self.transform:

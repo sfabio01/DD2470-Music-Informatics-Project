@@ -3,9 +3,7 @@ import argparse
 from pathlib import Path
 
 import wandb
-import numpy as np
 from tqdm import tqdm
-from sklearn.manifold import TSNE
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -15,6 +13,7 @@ torch.random.manual_seed(1337)
 
 from baseline_model import Song2Vec
 from fma_dataset import FmaDataset
+from hard_fma_dataset import HardFmaDataset
 
 def infinite_loader(data_loader):
     while True:
@@ -32,7 +31,7 @@ def main(args):
     
     print(f"Training on device: {DEVICE}")
     
-    train_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
+    train_ds = HardFmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="train", skip_sanity_check=args.skip_sanity_check)
     val_ds = FmaDataset(metadata_folder="fma_metadata", root_dir="fma_processed", split="val", skip_sanity_check=args.skip_sanity_check)
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size, num_workers=0)
@@ -93,6 +92,11 @@ def main(args):
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
+
+        orig_shape = positive.shape
+        positive = positive.view(-1, *orig_shape[2:])  # (batch_size * n_positives, *orig_shape[2:])
+        negative = negative.view(-1, *orig_shape[2:])  # (batch_size * n_negatives, *orig_shape[2:])
+
         anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
 
         lr = get_lr(step)
@@ -100,10 +104,26 @@ def main(args):
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
-
             with torch.no_grad():
-                positive_embed = model(positive).detach()
-                negative_embed = model(negative).detach()
+                positive_embed = model(positive)
+                negative_embed = model(negative)
+
+        positive_embed = positive_embed.view(orig_shape[0], orig_shape[1], -1)
+        negative_embed = negative_embed.view(orig_shape[0], orig_shape[1], -1)
+
+        dist_pos = torch.cdist(anchor_embed.unsqueeze(1), positive_embed, p=2).squeeze(1)  # shape (batch_size, 20)
+        dist_neg = torch.cdist(anchor_embed.unsqueeze(1), negative_embed, p=2).squeeze(1)
+
+        p = torch.argmax(dist_pos, dim=1) # shape (batch_size,)
+        n = torch.argmin(dist_neg, dim=1)
+
+        positive = positive.view(orig_shape[0], orig_shape[1], *positive.shape[1:])
+        negative = negative.view(orig_shape[0], orig_shape[1], *negative.shape[1:])
+
+        # recompute the embeddings for the selected positive and negative samples, with gradient tracking
+        with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
+            positive_embed = model(positive[:, p])
+            negative_embed = model(negative[:, n])
 
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
 
@@ -133,7 +153,7 @@ def main(args):
                 total_negative_cosine_similarity = 0
                 
                 for _ in range(VAL_STEPS):
-                    anchor, positive, negative = next(val_dl)
+                    anchor, positive, negative = next(val_dl)  # the val dataset does not perform hard mining
                     anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
                     
                     with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
