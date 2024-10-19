@@ -22,6 +22,7 @@ def infinite_loader(data_loader):
 
 CHECKPOINT_PATH = Path("checkpoints")
 CHECKPOINT_PATH.mkdir(parents=True, exist_ok=True)
+
 def main(args):
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     DTYPE = torch.bfloat16 if DEVICE=="cuda" else torch.float16
@@ -39,32 +40,18 @@ def main(args):
     TOTAL_STEPS = len(train_dl) * args.epochs
     VAL_INTERVAL = len(train_dl) // 10  # i.e. how often per epoch to validate with a portion of the validation set
     VAL_STEPS = len(val_dl) // 10  # i.e. the size of that portion
-    WARMUP_STEPS = int(TOTAL_STEPS * 0.03)
     CHECKPOINT_INTERVAL = TOTAL_STEPS // 10
 
     MEAN = torch.tensor([-18.2629, 0.6244, 0.1782], device=DEVICE).view(1, 1, 1, 3)
     STD = torch.tensor([17.5452, 0.2233, 0.2252], device=DEVICE).view(1, 1, 1, 3)
 
     def normalize(audio): return (audio - MEAN) / STD
-    def unnormalize(normalized_audio): return normalized_audio * STD + MEAN
-
-    def get_lr(step:int)->float:
-        if step < WARMUP_STEPS:  # 1) linear warmup for WARMUP_STEPS steps
-            return args.max_lr * (step + 1) / WARMUP_STEPS
-        if step > TOTAL_STEPS:  # 2) if it > TOTAL_STEPS, return min learning rate
-            return args.min_lr
-        # 3) in between, use cosine decay down to min learning rate
-        decay_ratio = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        assert 0 <= decay_ratio <= 1
-        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
-        return args.min_lr + coeff * (args.max_lr - args.min_lr)
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.max_lr, fused=False, weight_decay=0.01)  # fused speeds up training
-    # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
+    optim = torch.optim.AdamW(model.parameters(), lr=args.lr, fused=False, weight_decay=0.01)  # fused speeds up training
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
 
@@ -72,7 +59,7 @@ def main(args):
         name=args.run_name,
         project="Song2Vec",
         config={
-            "learning_rate": args.max_lr,
+            "learning_rate": args.lr,
             "epochs": args.epochs,
             "n_training_examples": len(train_ds),
             "n_validation_examples": len(val_ds),
@@ -98,9 +85,6 @@ def main(args):
         negative = negative.view(-1, *orig_shape[2:])  # (batch_size * n_negatives, *orig_shape[2:])
 
         anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
-
-        lr = get_lr(step)
-        for param_group in optim.param_groups: param_group["lr"] = lr
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_embed = model(anchor)
@@ -137,7 +121,6 @@ def main(args):
         
         train_loss = loss.item()
         wandb.log({
-            "lr": lr,
             "loss/triplet": train_loss,
             "cosine_similarity/positive": positive_cosine_similarity.mean().item(),
             "cosine_similarity/negative": negative_cosine_similarity.mean().item()
@@ -193,8 +176,7 @@ if __name__ == "__main__":
     parser.add_argument("--run_name", type=str, default=None)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--max_lr", type=float, default=3e-4, help="Maximum learning rate")
-    parser.add_argument("--min_lr", type=float, default=6e-5, help="Minimum learning rate")
+    parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--val_interval", type=int, default=8, help="How many times per training epoch to process a correspondingly large validation portion")
     parser.add_argument("--skip_sanity_check", action="store_true")
     args = parser.parse_args()
