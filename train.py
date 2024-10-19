@@ -95,8 +95,10 @@ def main(args):
         positive_embed = positive_embed.view(orig_shape[0], orig_shape[1], -1)
         negative_embed = negative_embed.view(orig_shape[0], orig_shape[1], -1)
 
-        dist_pos = torch.cdist(anchor_embed.unsqueeze(1), positive_embed, p=2).squeeze(1)  # shape (batch_size, 20)
-        dist_neg = torch.cdist(anchor_embed.unsqueeze(1), negative_embed, p=2).squeeze(1)
+        dist_pos = 1 - F.cosine_similarity(anchor_embed.unsqueeze(1), positive_embed, dim=-1) # shape (batch_size, 20)
+        dist_neg = 1 - F.cosine_similarity(anchor_embed.unsqueeze(1), negative_embed, dim=-1)
+        # dist_pos = torch.cdist(anchor_embed.unsqueeze(1), positive_embed, p=2).squeeze(1)  # shape (batch_size, 20)
+        # dist_neg = torch.cdist(anchor_embed.unsqueeze(1), negative_embed, p=2).squeeze(1)
 
         p = torch.argmax(dist_pos, dim=1) # shape (batch_size,)
         n = torch.argmin(dist_neg, dim=1)
