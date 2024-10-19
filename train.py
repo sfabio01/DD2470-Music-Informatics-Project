@@ -103,8 +103,6 @@ def main(args):
             positive_embed = model(positive)
             negative_embed = model(negative)
 
-            anchor_out = unnormalize(anchor_out)
-        
             loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
 
         positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
@@ -140,8 +138,6 @@ def main(args):
                         anchor_embed = model(anchor)
                         positive_embed = model(positive)
                         negative_embed = model(negative)
-
-                        anchor_out = unnormalize(anchor_out)
 
                         triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
                         
