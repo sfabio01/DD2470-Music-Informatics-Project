@@ -62,7 +62,6 @@ def main(args):
         assert 0 <= decay_ratio <= 1
         coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
         return args.min_lr + coeff * (args.max_lr - args.min_lr)
-    
     def get_curriculum_ratio(step: int) -> tuple[float, float]:
         if step < WARMUP_STEPS:
             return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
@@ -78,7 +77,7 @@ def main(args):
     val_dl = infinite_loader(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.max_lr, fused=False)  # fused speeds up training
+    optim = torch.optim.Adam(model.parameters(), lr=args.max_lr, weight_decay=1e-3)
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
@@ -88,6 +87,7 @@ def main(args):
         project="Song2Vec",
         config={
             "learning_rate": args.max_lr,
+            "weight_decay": 1e-3,
             "epochs": args.epochs,
             "n_training_examples": len(train_ds),
             "n_validation_examples": len(val_ds),
