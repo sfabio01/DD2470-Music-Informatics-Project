@@ -46,32 +46,30 @@ def main(args):
     MEAN = torch.tensor([-18.2629, 0.6244, 0.1782], device=DEVICE).view(1, 1, 1, 3)
     STD = torch.tensor([17.5452, 0.2233, 0.2252], device=DEVICE).view(1, 1, 1, 3)
 
-    def normalize(audio):
-        return (audio - MEAN) / STD
+    def normalize(audio): return (audio - MEAN) / STD
+    def unnormalize(normalized_audio): return normalized_audio * STD + MEAN
 
-    def unnormalize(normalized_audio):
-        return normalized_audio * STD + MEAN
-
-    def get_lr(step:int)->float:
-        if step < WARMUP_STEPS:  # 1) linear warmup for WARMUP_STEPS steps
-            return args.max_lr * (step + 1) / WARMUP_STEPS
-        if step > TOTAL_STEPS:  # 2) if it > TOTAL_STEPS, return min learning rate
-            return args.min_lr
-        # 3) in between, use cosine decay down to min learning rate
-        decay_ratio = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        assert 0 <= decay_ratio <= 1
-        coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
-        return args.min_lr + coeff * (args.max_lr - args.min_lr)
-    def get_curriculum_ratio(step: int) -> tuple[float, float]:
-        if step < WARMUP_STEPS:
-            return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
-        if step > TOTAL_STEPS:
-            return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
-        # Linear interpolation between start and end ratios
-        progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        reconstruction_ratio = 0.5 - (0.4 * progress)  # 0.5 to 0.1
-        triplet_ratio = 0.5 + (0.4 * progress)  # 0.5 to 0.9
-        return reconstruction_ratio, triplet_ratio
+    # def get_lr(step:int)->float:
+    #     if step < WARMUP_STEPS:  # 1) linear warmup for WARMUP_STEPS steps
+    #         return args.max_lr * (step + 1) / WARMUP_STEPS
+    #     if step > TOTAL_STEPS:  # 2) if it > TOTAL_STEPS, return min learning rate
+    #         return args.min_lr
+    #     # 3) in between, use cosine decay down to min learning rate
+    #     decay_ratio = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
+    #     assert 0 <= decay_ratio <= 1
+    #     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
+    #     return args.min_lr + coeff * (args.max_lr - args.min_lr)
+    
+    # def get_curriculum_ratio(step: int) -> tuple[float, float]:
+    #     if step < WARMUP_STEPS:
+    #         return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
+    #     if step > TOTAL_STEPS:
+    #         return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
+    #     # Linear interpolation between start and end ratios
+    #     progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
+    #     reconstruction_ratio = 0.5 - (0.4 * progress)  # 0.5 to 0.1
+    #     triplet_ratio = 0.5 + (0.4 * progress)  # 0.5 to 0.9
+    #     return reconstruction_ratio, triplet_ratio
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)
@@ -99,6 +97,8 @@ def main(args):
     reconstruction_loss_fn = nn.MSELoss()
     triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
 
+    reconstruction_ratio, triplet_ratio = 0.1, 0.9
+
     model = torch.compile(model, backend="aot_eager")
     model.train()
 
@@ -110,8 +110,6 @@ def main(args):
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
         anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
 
-        lr = get_lr(step)
-        reconstruction_ratio, triplet_ratio = get_curriculum_ratio(step)
         for param_group in optim.param_groups: param_group["lr"] = lr
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
