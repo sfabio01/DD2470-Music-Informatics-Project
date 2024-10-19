@@ -46,11 +46,8 @@ def main(args):
     MEAN = torch.tensor([-18.2629, 0.6244, 0.1782], device=DEVICE).view(1, 1, 1, 3)
     STD = torch.tensor([17.5452, 0.2233, 0.2252], device=DEVICE).view(1, 1, 1, 3)
 
-    def normalize(audio):
-        return (audio - MEAN) / STD
-
-    def unnormalize(normalized_audio):
-        return normalized_audio * STD + MEAN
+    def normalize(audio): return (audio - MEAN) / STD
+    def unnormalize(normalized_audio): return normalized_audio * STD + MEAN
 
     def get_lr(step:int)->float:
         if step < WARMUP_STEPS:  # 1) linear warmup for WARMUP_STEPS steps
@@ -62,23 +59,12 @@ def main(args):
         assert 0 <= decay_ratio <= 1
         coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
         return args.min_lr + coeff * (args.max_lr - args.min_lr)
-    
-    def get_curriculum_ratio(step: int) -> tuple[float, float]:
-        if step < WARMUP_STEPS:
-            return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
-        if step > TOTAL_STEPS:
-            return 0.1, 0.9  # End with 10% reconstruction, 90% triplet loss
-        # Linear interpolation between start and end ratios
-        progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        reconstruction_ratio = 0.5 - (0.5 * progress)  # 0.5 to 0.0
-        triplet_ratio = 0.5 + (0.5 * progress)  # 0.5 to 1.0
-        return reconstruction_ratio, triplet_ratio
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.AdamW(model.parameters(), lr=args.max_lr, fused=False)  # fused speeds up training
+    optim = torch.optim.AdamW(model.parameters(), lr=args.max_lr, fused=False, weight_decay=0.01)  # fused speeds up training
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
@@ -96,7 +82,6 @@ def main(args):
         },
     )
     
-    reconstruction_loss_fn = nn.MSELoss()
     triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
 
     model = torch.compile(model, backend="aot_eager")
@@ -111,19 +96,16 @@ def main(args):
         anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
 
         lr = get_lr(step)
-        reconstruction_ratio, triplet_ratio = get_curriculum_ratio(step)
         for param_group in optim.param_groups: param_group["lr"] = lr
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-            anchor_out, anchor_embed = model(anchor)
-            _, positive_embed = model.encode(positive)  # no need to decode positive / negative
-            _, negative_embed = model.encode(negative)
+            anchor_embed = model(anchor)
+            positive_embed = model(positive)
+            negative_embed = model(negative)
 
             anchor_out = unnormalize(anchor_out)
         
-            reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
-            triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-            loss = reconstruction_loss * reconstruction_ratio + triplet_loss * triplet_ratio
+            loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
 
         positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
         negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
@@ -136,10 +118,7 @@ def main(args):
         train_loss = loss.item()
         wandb.log({
             "lr": lr,
-            "reconstruction_ratio": reconstruction_ratio,
-            "loss/total_loss": train_loss,
             "loss/triplet": triplet_loss.item(),
-            "loss/reconstruction": reconstruction_loss.item(),
             "cosine_similarity/positive": positive_cosine_similarity.mean().item(),
             "cosine_similarity/negative": negative_cosine_similarity.mean().item()
         }, step=step)
@@ -149,9 +128,7 @@ def main(args):
             with torch.no_grad():
                 step_tqdm.set_description(f"Validating...")
                 model.eval()
-                total_val_loss = 0
                 total_triplet_loss = 0
-                total_reconstruction_loss = 0
                 total_positive_cosine_similarity = 0
                 total_negative_cosine_similarity = 0
                 
@@ -160,32 +137,26 @@ def main(args):
                     anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
                     
                     with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
-                        anchor_out, anchor_embed = model(anchor)
-                        _, positive_embed = model.encode(positive)
-                        _, negative_embed = model.encode(negative)
+                        anchor_embed = model(anchor)
+                        positive_embed = model(positive)
+                        negative_embed = model(negative)
 
                         anchor_out = unnormalize(anchor_out)
 
-                        reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
                         triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
-                        loss = reconstruction_loss * reconstruction_ratio + triplet_loss * triplet_ratio
                         
                     positive_cosine_similarity = F.cosine_similarity(anchor_embed, positive_embed)
                     negative_cosine_similarity = F.cosine_similarity(anchor_embed, negative_embed)
 
                     val_loss = loss.item()
-                    total_val_loss += val_loss
-                    total_triplet_loss += triplet_loss.item()
-                    total_reconstruction_loss += reconstruction_loss.item()
+                    total_triplet_loss += val_loss
                     total_positive_cosine_similarity += positive_cosine_similarity.mean().item()
                     total_negative_cosine_similarity += negative_cosine_similarity.mean().item()
                     
                     step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
 
                 wandb.log({
-                    "loss/avg_val_total": total_val_loss / VAL_STEPS,
                     "loss/avg_val_triplet": total_triplet_loss / VAL_STEPS,
-                    "loss/avg_val_reconstruction": total_reconstruction_loss / VAL_STEPS,
                     "cosine_similarity/avg_val_positive": total_positive_cosine_similarity / VAL_STEPS,
                     "cosine_similarity/avg_val_negative": total_negative_cosine_similarity / VAL_STEPS,
                 }, step=step)
