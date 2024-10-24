@@ -68,16 +68,20 @@ class Song2Vec(nn.Module):
         self.decoder = CNNDecoder()
         
     def encode(self, x):
-        x = x.permute(0, 3, 1, 2)  # Shape: (B, C, H, W)
-        x = self.encoder(x)        # Shape: (B, H_enc, W_enc)
+        x = x.permute(0, 3, 1, 2)  # From (B, H, W, C) to (B, C, H, W)
+        x = self.encoder(x)        # Shape: (B, 256, 256)
         
-        B, H_enc, W_enc = x.shape
-        
-        _, h_n = self.gru_encoder(x)  # h_n: (num_layers * num_directions, B, hidden_size)
+        # Treating one dimension as sequence length and the other as input size
+        x = x.permute(0, 2, 1)  # Shape: (B, seq_len, input_size)
 
+        # Feed into GRU Encoder
+        out, h_n = self.gru_encoder(x)
+        
+        # Get the last hidden state from both directions
         last = torch.cat((h_n[-2,:,:], h_n[-1,:,:]), dim=1)
-        z = self.enc_mapping(last)
-        return z, h_n, W_enc  # Return z and sequence length for decoder
+        z = self.enc_mapping(last)  # Shape: (B, 256)
+        return z, h_n, x.size(1)  # x.size(1) is seq_len
+
     
     def decode(self, h_n, seq_len):        
         # Prepare decoder inputs (zeros)
