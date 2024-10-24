@@ -17,7 +17,7 @@ class CNNEncoder(nn.Module):
         x = self.bn1(F.leaky_relu(self.conv1(x)))
         x = self.bn2(F.leaky_relu(self.conv2(x)))
         x = self.bn3(F.leaky_relu(self.conv3(x)))
-        x = self.self.convlast(x)
+        x = self.convlast(x)
         x = x.squeeze(1)
         return x
 
