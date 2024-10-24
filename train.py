@@ -62,7 +62,7 @@ def main(args):
     val_dl = infinite_loader(val_dl)
     
     model = Song2Vec().to(DEVICE)
-    optim = torch.optim.Adam(model.parameters(), lr=args.max_lr, weight_decay=1e-3)
+    optim = torch.optim.AdamW(model.parameters(), lr=args.max_lr, weight_decay=1e-3)
     # scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=0.9)
     
     print(f"training model with {sum([p.numel() for p in model.parameters() if p.requires_grad])/1e6:.2f}M parameters")
@@ -82,7 +82,7 @@ def main(args):
     )
     
     reconstruction_loss_fn = nn.MSELoss()
-    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+    triplet_loss_fn = nn.TripletMarginWithDistanceLoss(distance_function=lambda x, y: 1 - F.cosine_similarity(x, y), margin=1.0)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()

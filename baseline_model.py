@@ -12,17 +12,12 @@ class CNNEncoder(nn.Module):
         self.conv3 = nn.Conv2d(32, 64, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
         self.bn3 = nn.BatchNorm2d(64)
         self.convlast = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
-        self.bnlast = nn.BatchNorm2d(1)
-        self.dropout = nn.Dropout2d(p=0.3)
 
     def forward(self, x):
         x = self.bn1(F.leaky_relu(self.conv1(x)))
-        x = self.dropout(x)
         x = self.bn2(F.leaky_relu(self.conv2(x)))
-        x = self.dropout(x)
         x = self.bn3(F.leaky_relu(self.conv3(x)))
-        x = self.dropout(x)
-        x = self.bnlast(self.convlast(x))
+        x = self.convlast(x)
         x = x.squeeze(1)
         return x
 
@@ -36,14 +31,11 @@ class CNNDecoder(nn.Module):
         self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
         self.bn3 = nn.BatchNorm2d(16)
         self.convlast = nn.ConvTranspose2d(16, 3, kernel_size=1, stride=1, padding=0)
-        self.dropout = nn.Dropout2d(p=0.3)
 
     def forward(self, x):
         x = x.unsqueeze(1)
         x = self.bn1(F.leaky_relu(self.conv1(x)))
-        x = self.dropout(x)
         x = self.bn2(F.leaky_relu(self.conv2(x)))
-        x = self.dropout(x)
         x = self.bn3(F.leaky_relu(self.conv3(x)))
         x = self.convlast(x)
         return x
