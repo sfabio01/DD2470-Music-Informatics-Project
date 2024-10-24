@@ -43,11 +43,6 @@ def main(args):
     WARMUP_STEPS = int(TOTAL_STEPS * 0.03)
     CHECKPOINT_INTERVAL = TOTAL_STEPS // 10
 
-    MEAN = torch.tensor([-18.2629, 0.6244, 0.1782], device=DEVICE).view(1, 1, 1, 3)
-    STD = torch.tensor([17.5452, 0.2233, 0.2252], device=DEVICE).view(1, 1, 1, 3)
-
-    def normalize(audio): return (audio - MEAN) / STD
-    def unnormalize(normalized_audio): return normalized_audio * STD + MEAN
 
     # def get_lr(step:int)->float:
     #     if step < WARMUP_STEPS:  # 1) linear warmup for WARMUP_STEPS steps
@@ -98,7 +93,6 @@ def main(args):
         step_tqdm.set_description(f"Training...")
         anchor, positive, negative = next(train_dl)
         anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
-        anchor, positive, negative = normalize(anchor), normalize(positive), normalize(negative)
 
         reconstruction_ratio, triplet_ratio = get_curriculum_ratio(step)
 
@@ -106,8 +100,6 @@ def main(args):
             anchor_out, anchor_embed = model(anchor)
             positive_embed, _ = model.encode(positive)  # no need to decode positive / negative
             negative_embed, _ = model.encode(negative)
-
-            anchor_out = unnormalize(anchor_out)
         
             reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
             triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
@@ -150,8 +142,6 @@ def main(args):
                         anchor_out, anchor_embed = model(anchor)
                         positive_embed, _ = model.encode(positive)
                         negative_embed, _ = model.encode(negative)
-
-                        anchor_out = unnormalize(anchor_out)
 
                         reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
                         triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
