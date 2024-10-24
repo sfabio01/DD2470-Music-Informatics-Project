@@ -41,21 +41,14 @@ def process_files_in_parallel(file_list: list[str], output_dir: str, num_workers
     memmap_path = os.path.join(output_dir, "memmap.dat")
     memmap_shape = (len(file_list), 1024, 2048, 3)
     
-    # Create the memmap file
-    memmap = np.memmap(memmap_path, dtype=np.float16, mode='w+', shape=memmap_shape)
-    del memmap
-    
     with Pool(processes=num_workers) as pool:
         args_list = [(i, file_path, memmap_path, memmap_shape) for i, file_path in enumerate(file_list)]
         for _ in tqdm(pool.imap_unordered(process_and_store, args_list), total=len(file_list), desc="Processing audio files"):
             pass
 
+    print(song_to_feature)
     json.dump(song_to_feature, open(os.path.join(output_dir, "song_to_feature.json"), "w"))
 
-    # Final flush
-    memmap = np.memmap(memmap_path, dtype=np.float16, mode='r+', shape=memmap_shape)
-    memmap.flush()
-    del memmap
 
 def librosa_load_wrapper(file_path):
     try:
