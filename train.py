@@ -61,19 +61,7 @@ def main(args):
     #     return args.min_lr + coeff * (args.max_lr - args.min_lr)
     
     def get_curriculum_ratio(step: int) -> tuple[float, float]:
-        if step < WARMUP_STEPS:
-            return 0.5, 0.5  # Start with 50% reconstruction, 50% triplet loss
-        if step > TOTAL_STEPS:
-            return 0.01, 0.99  # End with 1% reconstruction, 99% triplet loss
-        
-        # Exponential decay for reconstruction ratio
-        progress = (step - WARMUP_STEPS) / (TOTAL_STEPS - WARMUP_STEPS)
-        decay_rate = 5  # Increase this value for faster decay
-        reconstruction_ratio = 0.5 * math.exp(-decay_rate * progress)
-        reconstruction_ratio = max(reconstruction_ratio, 0.01)  # Ensure it doesn't go below 0.01
-        
-        triplet_ratio = 1 - reconstruction_ratio
-        return reconstruction_ratio, triplet_ratio
+        return 0.5, 0.5
 
     train_dl = infinite_loader(train_dl)  # infinite iterator
     val_dl = infinite_loader(val_dl)

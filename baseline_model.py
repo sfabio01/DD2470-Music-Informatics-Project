@@ -6,19 +6,23 @@ class CNNEncoder(nn.Module):
     def __init__(self):
         super(CNNEncoder, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn1 = nn.BatchNorm2d(16)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
+        self.bn3 = nn.BatchNorm2d(64)
         self.convlast = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
+        self.bnlast = nn.BatchNorm2d(1)
         self.dropout = nn.Dropout2d(p=0.3)
 
     def forward(self, x):
-        x = F.leaky_relu(self.conv1(x))
+        x = self.bn1(F.leaky_relu(self.conv1(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.conv2(x))
+        x = self.bn2(F.leaky_relu(self.conv2(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.conv3(x))
+        x = self.bn3(F.leaky_relu(self.conv3(x)))
         x = self.dropout(x)
-        x = self.convlast(x)
+        x = self.bnlast(self.convlast(x))
         x = x.squeeze(1)
         return x
 
@@ -26,20 +30,24 @@ class CNNDecoder(nn.Module):
     def __init__(self):
         super(CNNDecoder, self).__init__()
         self.conv1 = nn.ConvTranspose2d(1, 64, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn1 = nn.BatchNorm2d(64)
         self.conv2 = nn.ConvTranspose2d(64, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
+        self.bn3 = nn.BatchNorm2d(16)
         self.convlast = nn.ConvTranspose2d(16, 3, kernel_size=1, stride=1, padding=0)
+        self.bnlast = nn.BatchNorm2d(3)
         self.dropout = nn.Dropout2d(p=0.3)
 
     def forward(self, x):
         x = x.unsqueeze(1)
-        x = F.leaky_relu(self.conv1(x))
+        x = self.bn1(F.leaky_relu(self.conv1(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.conv2(x))
+        x = self.bn2(F.leaky_relu(self.conv2(x)))
         x = self.dropout(x)
-        x = F.leaky_relu(self.conv3(x))
+        x = self.bn3(F.leaky_relu(self.conv3(x)))
         x = self.dropout(x)
-        x = self.convlast(x)
+        x = self.bnlast(self.convlast(x))
         return x
 
 class Song2Vec(nn.Module):
@@ -52,12 +60,12 @@ class Song2Vec(nn.Module):
             hidden_size=512,
             num_layers=2,
             batch_first=True,
-            bidirectional=True,
+            bidirectional=False,
             dropout=0.3  # Dropout between GRU layers
         )
 
         self.hid_mapping = nn.Sequential(
-            nn.Linear(512 * 2 * 2, 256 * 2 * 2),
+            nn.Linear(512, 256 * 2),
             nn.Dropout(p=0.5)
         )
 
@@ -66,11 +74,11 @@ class Song2Vec(nn.Module):
             hidden_size=256,
             num_layers=2,
             batch_first=True,
-            bidirectional=True,
+            bidirectional=False,
             dropout=0.3  # Dropout between GRU layers
         )
         self.fc_dec = nn.Sequential(
-            nn.Linear(in_features=512, out_features=256),
+            nn.Linear(in_features=256, out_features=256),
             nn.Dropout(p=0.5)
         )
         self.decoder = CNNDecoder()
@@ -82,22 +90,21 @@ class Song2Vec(nn.Module):
         B, H_enc, W_enc = x.shape
         x = x.permute(0, 2, 1).contiguous()  # Shape: (B, W_enc, H_enc)
         
-        out, h_n = self.gru_encoder(x)  # h_n: (num_layers * num_directions, B, hidden_size)
-        z = h_n  # We'll use the entire hidden state
-        z = z.permute(1, 0, 2).contiguous().view(B, -1)
+        out, h_n = self.gru_encoder(x)  # h_n: (num_layers, B, hidden_size)
+        z = h_n[-1]  # Only use last layer's hidden state
         return z, W_enc  # Return z and sequence length for decoder
     
     def decode(self, z, seq_len):
         # Map encoder hidden state z to decoder initial hidden state h_0
-        h_0 = self.hid_mapping(z)  # Shape: (B, num_layers * num_directions * decoder_hidden_size)
-        h_0 = h_0.view(z.shape[0], self.gru_decoder.num_layers * (2 if self.gru_decoder.bidirectional else 1), self.gru_decoder.hidden_size)
-        h_0 = h_0.permute(1, 0, 2).contiguous()  # Shape: (num_layers * num_directions, B, decoder_hidden_size)
+        h_0 = self.hid_mapping(z)  # Shape: (B, num_layers * decoder_hidden_size)
+        h_0 = h_0.view(z.shape[0], self.gru_decoder.num_layers, self.gru_decoder.hidden_size)
+        h_0 = h_0.permute(1, 0, 2).contiguous()  # Shape: (num_layers, B, decoder_hidden_size)
         
         # Prepare decoder inputs (zeros)
         decoder_inputs = torch.zeros(z.shape[0], seq_len, 1).to(z.device)  # Input size is 1
         
         # Run decoder GRU
-        out, _ = self.gru_decoder(decoder_inputs, h_0)  # out: (B, seq_len, num_directions * hidden_size)
+        out, _ = self.gru_decoder(decoder_inputs, h_0)  # out: (B, seq_len, hidden_size)
         out = self.fc_dec(out)  # Shape: (B, seq_len, 256)
         x_reconstructed = self.decoder(out.permute(0, 2, 1))  # Adjust dimensions for CNNDecoder
         return x_reconstructed
