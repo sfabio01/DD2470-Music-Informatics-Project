@@ -98,8 +98,8 @@ def main(args):
 
         with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
             anchor_out, anchor_embed = model(anchor)
-            positive_embed, _ = model.encode(positive)  # no need to decode positive / negative
-            negative_embed, _ = model.encode(negative)
+            positive_embed, _, _ = model.encode(positive)  # no need to decode positive / negative
+            negative_embed, _, _ = model.encode(negative)
         
             reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
             triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
@@ -140,8 +140,8 @@ def main(args):
                     
                     with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
                         anchor_out, anchor_embed = model(anchor)
-                        positive_embed, _ = model.encode(positive)
-                        negative_embed, _ = model.encode(negative)
+                        positive_embed, _, _ = model.encode(positive)
+                        negative_embed, _, _ = model.encode(negative)
 
                         reconstruction_loss = reconstruction_loss_fn(anchor_out, anchor) * 0.1  # to account for the inherent summing over the time axis
                         triplet_loss = triplet_loss_fn(anchor_embed, positive_embed, negative_embed)
