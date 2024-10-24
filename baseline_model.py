@@ -33,7 +33,7 @@ class CNNDecoder(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.conv2 = nn.ConvTranspose2d(64, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
         self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
+        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
         self.bn3 = nn.BatchNorm2d(16)
         self.convlast = nn.ConvTranspose2d(16, 3, kernel_size=1, stride=1, padding=0)
         self.bnlast = nn.BatchNorm2d(3)
@@ -94,7 +94,7 @@ class Song2Vec(nn.Module):
         
         # Run decoder GRU
         out, _ = self.gru_decoder(decoder_inputs, h_n)  # out: (B, seq_len, hidden_size)
-        x_reconstructed = self.decoder(out.permute(0, 2, 1))  # Adjust dimensions for CNNDecoder
+        x_reconstructed = self.decoder(out)  # Adjust dimensions for CNNDecoder
         return x_reconstructed
     
     def forward(self, x):
