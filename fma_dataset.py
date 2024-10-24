@@ -104,7 +104,7 @@ class FmaDataset(Dataset):
         track_id = str(track['track_id'])
         
         # Select random category and get samples
-        category = np.random.choice(METADATA_INDEX)
+        category = "genre" # np.random.choice(METADATA_INDEX)
         positive_id, negative_id = self._get_samples(track, category)
         
         if not self.skip_sanity_check:

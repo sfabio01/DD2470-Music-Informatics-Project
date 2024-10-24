@@ -33,10 +33,9 @@ class CNNDecoder(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.conv2 = nn.ConvTranspose2d(64, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
         self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
         self.bn3 = nn.BatchNorm2d(16)
         self.convlast = nn.ConvTranspose2d(16, 3, kernel_size=1, stride=1, padding=0)
-        self.bnlast = nn.BatchNorm2d(3)
         self.dropout = nn.Dropout2d(p=0.3)
 
     def forward(self, x):
@@ -46,8 +45,7 @@ class CNNDecoder(nn.Module):
         x = self.bn2(F.leaky_relu(self.conv2(x)))
         x = self.dropout(x)
         x = self.bn3(F.leaky_relu(self.conv3(x)))
-        x = self.dropout(x)
-        x = self.bnlast(self.convlast(x))
+        x = self.convlast(x)
         return x
 
 class Song2Vec(nn.Module):
@@ -60,20 +58,21 @@ class Song2Vec(nn.Module):
             hidden_size=512,
             num_layers=2,
             batch_first=True,
-            bidirectional=False,
+            bidirectional=True,  # Changed to bidirectional=True
             dropout=0.3  # Dropout between GRU layers
         )
         
-        self.enc_mapping = nn.Linear(512, 256)
+        self.enc_mapping = nn.Linear(512 * 2, 256)  # Adjusted input size for bidirectional GRU
 
         self.gru_decoder = nn.GRU(
             input_size=1,
             hidden_size=512,
             num_layers=2,
             batch_first=True,
-            bidirectional=False,
+            bidirectional=True,  # Changed to bidirectional=True
             dropout=0.3  # Dropout between GRU layers
         )
+        self.dec_mapping = nn.Linear(512 * 2, 256)
         self.decoder = CNNDecoder()
         
     def encode(self, x):
@@ -81,11 +80,11 @@ class Song2Vec(nn.Module):
         x = self.encoder(x)        # Shape: (B, H_enc, W_enc)
         
         B, H_enc, W_enc = x.shape
-        x = x.permute(0, 2, 1).contiguous()  # Shape: (B, W_enc, H_enc)
         
-        _, h_n = self.gru_encoder(x)  # h_n: (num_layers, B, hidden_size)
+        _, h_n = self.gru_encoder(x)  # h_n: (num_layers * num_directions, B, hidden_size)
 
-        z = self.enc_mapping(h_n[-1])
+        last = torch.cat((h_n[-2,:,:], h_n[-1,:,:]), dim=1)
+        z = self.enc_mapping(last)
         return z, h_n, W_enc  # Return z and sequence length for decoder
     
     def decode(self, h_n, seq_len):        
@@ -93,7 +92,8 @@ class Song2Vec(nn.Module):
         decoder_inputs = torch.zeros(h_n.shape[1], seq_len, 1).to(h_n.device)  # Input size is 1
         
         # Run decoder GRU
-        out, _ = self.gru_decoder(decoder_inputs, h_n)  # out: (B, seq_len, hidden_size)
+        out, _ = self.gru_decoder(decoder_inputs, h_n)  # out: (B, seq_len, hidden_size * num_directions)
+        out = self.dec_mapping(out)
         x_reconstructed = self.decoder(out)  # Adjust dimensions for CNNDecoder
         return x_reconstructed
     
