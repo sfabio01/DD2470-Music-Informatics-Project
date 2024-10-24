@@ -82,7 +82,7 @@ def main(args):
     )
     
     reconstruction_loss_fn = nn.MSELoss()
-    triplet_loss_fn = nn.TripletMarginLoss(margin=1.0, p=2)
+    triplet_loss_fn = nn.TripletMarginWithDistanceLoss(distance_function=lambda x, y: 1 - F.cosine_similarity(x, y), margin=1.0)
 
     model = torch.compile(model, backend="aot_eager")
     model.train()
