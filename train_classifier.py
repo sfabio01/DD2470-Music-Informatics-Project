@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
+import sklearn
 
 from classifier import GenreClassifier
 from classification_dataset import MyDataset
@@ -123,7 +124,9 @@ def main(args):
                 step_tqdm.set_description(f"Validating...")
                 model.eval()
                 total_val_loss = 0
-           
+                all_predictions = []
+                all_labels = []
+            
                 for _ in range(VAL_STEPS):
                     images, labels = next(val_dl)
                     images = images.to(DEVICE)
@@ -131,17 +134,30 @@ def main(args):
                     with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
                         predictions = model(images)
 
-                        loss = ce_loss(predictions, labels)
-                        
-
+                    loss = ce_loss(predictions, labels)
+                    
                     val_loss = loss.item()
                     total_val_loss += val_loss
-                    
+
+                    all_predictions.extend(predictions.argmax(dim=1).cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
+
                     step_tqdm.set_postfix(train_loss=train_loss, val_loss=val_loss)
 
+
+                avg_val_loss = total_val_loss / VAL_STEPS
+                total_accuracy = sklearn.metrics.accuracy_score(all_labels, all_predictions)
+                per_class_accuracy = sklearn.metrics.precision_score(all_labels, all_predictions, average=None)
+                total_f1_score = sklearn.metrics.f1_score(all_labels, all_predictions, average='weighted')
+
                 wandb.log({
-                    "loss/avg_val_total": total_val_loss / VAL_STEPS,
+                    "loss/avg_val_total": avg_val_loss,
+                    "metrics/total_accuracy": total_accuracy,
+                    "metrics/per_class_accuracy": per_class_accuracy,
+                    "metrics/total_f1_score": total_f1_score,
                 }, step=step)
+            
+            
             model.train()
 
         if step % CHECKPOINT_INTERVAL == 0 and step != 0:
