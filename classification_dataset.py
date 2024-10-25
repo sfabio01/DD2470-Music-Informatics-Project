@@ -65,22 +65,6 @@ class MyDataset(Dataset):
         """Load track data from npy file."""
         return np.load(pjoin(self.root_dir, f'{track_id.zfill(6)}.npy'))
 
-    def _get_samples(self, anchor_track: pd.Series, category: str) -> Tuple[str, str]:
-        """Get positive and negative samples for a given category."""
-        value = anchor_track[category]
-        current_bin = self._get_bin_for_value(value, category)
-        
-        # Get positive sample
-        positive_tracks = self.category_indices[category][current_bin]
-        positive_track = np.random.choice(positive_tracks)
-        
-        # Get negative sample
-        other_bins = [bin for bin in self.category_indices[category].keys() if bin != current_bin]
-        other_bin = np.random.choice(other_bins)
-        negative_track = np.random.choice(self.category_indices[category][other_bin])
-        
-        return str(positive_track), str(negative_track)
-
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         track = self.small.iloc[idx]
         track_id = str(track['track_id'])
