@@ -2,87 +2,107 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class CNNEncoder(nn.Module):
     def __init__(self):
         super(CNNEncoder, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=(4,3), stride=(2,1), padding=(1,1))
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=(4,3), stride=(2,1), padding=(1,1))
-        self.convlast = nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0)
-        
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
+        self.bn3 = nn.BatchNorm2d(64)
+        self.convlast = nn.Conv2d(64, 1, kernel_size=1, stride=1, padding=0)
+
     def forward(self, x):
-        x = F.leaky_relu(self.conv1(x))
-        x = F.leaky_relu(self.conv2(x))
-        x = F.leaky_relu(self.convlast(x))
-        return x.squeeze(1)
-    
+        x = self.bn1(F.leaky_relu(self.conv1(x)))
+        x = self.bn2(F.leaky_relu(self.conv2(x)))
+        x = self.bn3(F.leaky_relu(self.conv3(x)))
+        x = self.convlast(x)
+        x = x.squeeze(1)
+        return x
+
 class CNNDecoder(nn.Module):
     def __init__(self):
         super(CNNDecoder, self).__init__()
-        self.conv1 = nn.ConvTranspose2d(1, 32, kernel_size=(4,3), stride=(2,1), padding=(1,1))
-        self.conv2 = nn.ConvTranspose2d(32, 16, kernel_size=(4,3), stride=(2,1), padding=(1,1))
+        self.conv1 = nn.ConvTranspose2d(1, 64, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = nn.ConvTranspose2d(64, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.ConvTranspose2d(32, 16, kernel_size=(3, 4), stride=(1, 2), padding=(1, 1))
+        self.bn3 = nn.BatchNorm2d(16)
         self.convlast = nn.ConvTranspose2d(16, 3, kernel_size=1, stride=1, padding=0)
-        
+
     def forward(self, x):
         x = x.unsqueeze(1)
-        x = F.leaky_relu(self.conv1(x))
-        x = F.leaky_relu(self.conv2(x))
-        return self.convlast(x)
-    
+        x = self.bn1(F.leaky_relu(self.conv1(x)))
+        x = self.bn2(F.leaky_relu(self.conv2(x)))
+        x = self.bn3(F.leaky_relu(self.conv3(x)))
+        x = self.convlast(x)
+        return x
 
 class Song2Vec(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(Song2Vec, self).__init__()
 
         self.encoder = CNNEncoder()
-
-        self.w_pe = nn.Embedding(512, 1024)
-        self.transformer_encoder = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=1024, nhead=8, dim_feedforward=2048, batch_first=True),
-            num_layers=3
+        self.gru_encoder = nn.GRU(
+            input_size=256,
+            hidden_size=512,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,  # Changed to bidirectional=True
+            dropout=0.3  # Dropout between GRU layers
         )
         
-        self.query_vector = nn.Parameter(torch.randn(1, 1, 1024))
-        
-        self.transformer_decoder = nn.TransformerEncoder(  # decoder in the sense that it is after the middle
-            nn.TransformerEncoderLayer(d_model=1024, nhead=8, dim_feedforward=2048, batch_first=True),
-            num_layers=3
-        )
+        self.enc_mapping = nn.Linear(512 * 2, 256)  # Adjusted input size for bidirectional GRU
 
+        self.gru_decoder = nn.GRU(
+            input_size=1,
+            hidden_size=512,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,  # Changed to bidirectional=True
+            dropout=0.3  # Dropout between GRU layers
+        )
+        self.dec_mapping = nn.Linear(512 * 2, 256)
         self.decoder = CNNDecoder()
-    
-    def encode(self, x):
-        DEVICE = x.device
-
-        x = x.permute(0, 3, 2, 1)
-
-        x = self.encoder(x)
-        B, L, D = x.shape
-        pos = self.w_pe(torch.arange(L, device=DEVICE)).unsqueeze(0).expand(B, -1, -1)
-        context = x + pos
-        context_w_query = torch.cat([context, self.query_vector.expand(B, -1, -1)], dim=1)
-        context_w_query = self.transformer_encoder(context_w_query)
-
-        context = context_w_query[:, :-1, :]
         
-        z = context_w_query[:, -1, :]   
-        z = F.normalize(z, p=2, dim=1)
-            
-        return context, z
+    def encode(self, x):
+        x = x.permute(0, 3, 1, 2)  # From (B, H, W, C) to (B, C, H, W)
+        x = self.encoder(x)        # Shape: (B, 256, 256)
+        
+        # Treating one dimension as sequence length and the other as input size
+        x = x.permute(0, 2, 1)  # Shape: (B, seq_len, input_size)
 
-    def decode(self, context):
-        x = self.transformer_decoder(context)
-        x = self.decoder(x)
-        return x
+        # Feed into GRU Encoder
+        out, h_n = self.gru_encoder(x)
+        
+        # Get the last hidden state from both directions
+        last = torch.cat((h_n[-2,:,:], h_n[-1,:,:]), dim=1)
+        z = self.enc_mapping(last)  # Shape: (B, 256)
+        return z, h_n, x.size(1)  # x.size(1) is seq_len
 
-    def forward(self, x):
-        x, z = self.encode(x)
-        x = self.decode(x)
-        return x.permute(0, 3, 2, 1), z
     
+    def decode(self, h_n, seq_len):        
+        # Prepare decoder inputs (zeros)
+        decoder_inputs = torch.zeros(h_n.shape[1], seq_len, 1).to(h_n.device)  # Input size is 1
+        
+        # Run decoder GRU
+        out, _ = self.gru_decoder(decoder_inputs, h_n)  # out: (B, seq_len, hidden_size * num_directions)
+        out = self.dec_mapping(out)
+        x_reconstructed = self.decoder(out)  # Adjust dimensions for CNNDecoder
+        return x_reconstructed
+    
+    def forward(self, x):
+        z, h_n, seq_len = self.encode(x)
+        x_reconstructed = self.decode(h_n, seq_len)
+        x_reconstructed = x_reconstructed.permute(0, 2, 3, 1)  # Shape: (B, H, W, C)
+        return x_reconstructed, z
 
 if __name__ == "__main__":
     model = Song2Vec()
-    x = torch.randn(1, 1024, 2048, 3)
-    x, z = model(x)
-    print(x.shape, z.shape)
+    x = torch.randn(1, 1024, 2048, 3)  # Example input
+    x_reconstructed, z = model(x)
+    print(f"Input shape: {x.shape}")
+    print(f"Reconstructed shape: {x_reconstructed.shape}")
+    print(f"Latent vector shape: {z.shape}")

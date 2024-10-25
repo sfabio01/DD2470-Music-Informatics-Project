@@ -15,7 +15,7 @@ from classification_dataset import MyDataset
 
 torch.random.manual_seed(1337)
 
-from baseline_model import Song2Vec
+from model import Song2Vec
 
 def infinite_loader(data_loader):
     while True:
