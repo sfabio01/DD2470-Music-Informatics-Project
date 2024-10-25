@@ -123,8 +123,8 @@ def main(args):
                 total_val_loss = 0
            
                 for _ in range(VAL_STEPS):
-                    anchor, positive, negative = next(val_dl)
-                    anchor, positive, negative = anchor.to(DEVICE), positive.to(DEVICE), negative.to(DEVICE)
+                    images, labels = next(val_dl)
+                    images = images.to(DEVICE)
                     
                     with torch.autocast(device_type=DEVICE, dtype=DTYPE, enabled=DEVICE=="cuda"):
                         predictions = model(images)
