@@ -63,7 +63,9 @@ def main(args):
     song2vec = Song2Vec().to(DEVICE)
     # load weights from file
     if args.model_path is not None:
-        song2vec.load_state_dict(torch.load(args.model_path)["model_state_dict"])
+        state_dict = torch.load(args.model_path, map_location=DEVICE)["model_state_dict"]
+        wo_orig_mod = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+        song2vec.load_state_dict(wo_orig_mod)
     
     model = GenreClassifier(song2vec, num_genres=8).to(DEVICE)
 
